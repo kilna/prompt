@@ -1,0 +1,58 @@
+#!/bin/bash
+
+prompt_ansi() { echo -n '\[\e\[${1}m\]'; }
+
+testmode=0; [[ "$1" == -t || "$1" == --test ]] && testmode=1
+
+out=''
+for arg in "${arg[@]}"; do
+  case "$arg" in
+    :fg:*)         out+=$(prompt_ansi 3$(__ps1_ansi_color ${arg:4}));;
+    :bg:*)         out+=$(prompt_ansi 4$(__ps1_ansi_color ${arg:4}));;
+    :reset)        out+=$(prompt_ansi 0);;
+    :clear)        out+='\[\e[H\e[2J\]';;
+    +title)        out+='\[\e]0;\]';;        -title)     out+='\a';;
+    +bold)         out+=$(prompt_ansi 1);; -bold)      out+=$(prompt_ansi 21);;
+    +dim)          out+=$(prompt_ansi 2);; -dim)       out+=$(prompt_ansi 22);;
+    +italic)       out+=$(prompt_ansi 3);; -italic)    out+=$(prompt_ansi 23);;
+    +underline)    out+=$(prompt_ansi 4);; -underline) out+=$(prompt_ansi 24);;
+    +blink)        out+=$(prompt_ansi 5);; -blink)     out+=$(prompt_ansi 25);;
+    +reverse)      out+=$(prompt_ansi 7);; -reverse)   out+=$(prompt_ansi 27);;
+    +hidden)       out+=$(prompt_ansi 8);; -hidden)    out+=$(prompt_ansi 28);;
+    :eol)          out+=$(prompt_ansi 0)'\n';;
+    :user)         out+='\u';;
+    :dir)          out+='\w';;
+    :basename)     out+='\W';;
+    :host)         out+='\h';;
+    :fqdn)         out+='\H';;
+    :date)         out+='\d';;
+    :escape)       out+='\e';;
+    :jobs)         out+='\j';;
+    :device)       out+='\l';;
+    :nl|:newline)  out+='\n';;
+    :cr|:return)   out+='\r';;
+    :bell)         out+='\a';;
+    :shell)        out+='\s';;
+    :time|time-24) out+='\t';;
+    :time-12)      out+='\T';;
+    :time-ampm)    out+='\@';;
+    :version)      out+='\v';;
+    :version-full) out+='\V';;
+    :history)      out+='\!';;
+    :command)      out+='\#';;
+    :prompt)       out+='\$';;
+    :backslash)    out+='\\';;
+    :status)       out+='`__ps1_status`';;
+    :statusline)   out+='`__ps1_status --newline`';;
+    :title*)       opts=''
+                   [[ "$arg" == *'no-user'* ]] || [[ "$arg" == *'no-host'* ]] && opts+='\u' || opts+='\u@'
+                   [[ "$arg" == *'no-host'* ]] || [[ "$arg" == *'fqdn'* ]] && opts+='\H' || opts+='\h'
+                   [[ "$arg" == *'no-dir'* ]] || [[ "$arg" == *'base'* ]] && opts+=' \W' || opts+=' \w'
+                   out+='\[\e]0;\]`[[ "$PS1_TITLE" ]] && echo -n "$PS1_TITLE - "`'"$opts"'\a'
+                   ;;
+    *)             out+="$arg";;
+  esac
+done
+
+(( testmode )) && echo -n "$out" || export PS1=$out
+

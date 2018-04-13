@@ -1,40 +1,38 @@
 #!/bin/bash
 
-case "$TERM" in linux|xterm*|*vt*|con*|*ansi*|screen) export PS1_ANSI_TERM=1;; esac
+__ps1_ansi_code() { echo -en '\e\[${1}m'; }
 
-__ansi() { echo -n '\e\[${1}m'; }
-__prompt_ansi() { echo -n '\[\e\[${1}m\]'; }
-__ansi_color() {
+__ps1_ansi_color() {
   case "$1" in
     black) echo -n 0;; red) echo -n 1;; green) echo -n 2;; yellow) echo -n 3;;
     blue) echo -n 4;; magenta) echo -n 5;; cyan) echo -n 6;; white) echo -n 7;;
   esac
 }
 
-compile_ansi() {
+__ps1_ansi_compile() {
   local out=''
   for arg in "${arg[@]}"; do
     case "$arg" in
       :*|+*|-*)
-        if (( PS1_ANSI_TERM )); then
+        if [[ "${PS1_ANSI_TERM:-0}" -ne 0 ]]; then
           case "$arg" in
-            :fg:*)         out+=$(__ansi 3$(__ansi_color ${arg:4}));;
-            :bg:*)         out+=$(__ansi 4$(__ansi_color ${arg:4}));;
-            :reset)        out+=$(__ansi 0);;
+            :fg:*)         out+=$(__ps1_ansi_code 3$(__ps1_ansi_color ${arg:4}));;
+            :bg:*)         out+=$(__ps1_ansi_code 4$(__ps1_ansi_color ${arg:4}));;
+            :reset)        out+=$(__ps1_ansi_code 0);;
             :clear)        out+='\e[H\e[2J';;
             +title)        out+='\e]0;';;
             -title)        out+='\a';;
-            +bold)         out+=$(__ansi 1);; -bold)      out+=$(__ansi 21);;
-            +dim)          out+=$(__ansi 2);; -dim)       out+=$(__ansi 22);;
-            +italic)       out+=$(__ansi 3);; -italic)    out+=$(__ansi 23);;
-            +underline)    out+=$(__ansi 4);; -underline) out+=$(__ansi 24);;
-            +blink)        out+=$(__ansi 5);; -blink)     out+=$(__ansi 25);;
-            +reverse)      out+=$(__ansi 7);; -reverse)   out+=$(__ansi 27);;
-            +hidden)       out+=$(__ansi 8);; -hidden)    out+=$(__ansi 28);;
+            +bold)         out+=$(__ps1_ansi_code 1);; -bold)      out+=$(__ps1_ansi_code 21);;
+            +dim)          out+=$(__ps1_ansi_code 2);; -dim)       out+=$(__ps1_ansi_code 22);;
+            +italic)       out+=$(__ps1_ansi_code 3);; -italic)    out+=$(__ps1_ansi_code 23);;
+            +underline)    out+=$(__ps1_ansi_code 4);; -underline) out+=$(__ps1_ansi_code 24);;
+            +blink)        out+=$(__ps1_ansi_code 5);; -blink)     out+=$(__ps1_ansi_code 25);;
+            +reverse)      out+=$(__ps1_ansi_code 7);; -reverse)   out+=$(__ps1_ansi_code 27);;
+            +hidden)       out+=$(__ps1_ansi_code 8);; -hidden)    out+=$(__ps1_ansi_code 28);;
           esac
         fi
       ;;
-      :eol)          out+=$( (( PS1_ANSI_TERM )) && __ansi 0)$'\n';;
+      :eol)          out+=$( [[ "${PS1_ANSI_TERM:-0}" -ne 0 ]] && __ps1_ansi_code 0)$'\n';;
       :nl|:newline)  out+=$'\n';;
       :cr|:return)   out+=$'\r';;
       *)             out+="$arg";;
@@ -43,83 +41,58 @@ compile_ansi() {
   echo -n "$out"
 }
 
-set_title() { export PS1_TITLE="$1"; }
+__ps1_default_fg()     { echo -n white; }
+__ps1_default_bg()     { echo -n black; }
+__ps1_default_prefix() { echo -n ''; }
 
-set_prompt() { local prompt=$(compile_prompt "$@"); export PS1="$prompt"; }
+__ps1_style() {
+  if [[ "${PS1_STYLE:-default}" != 'default' ]]; then
+    [[ "$(type -t __ps1_style_${PS1_STYLE}_$1)" == 'function' ]] \
+      || source $PS1_ROOT/style/${PS1_STYLE}.sh
+  fi
+  __ps1_style_${PS1_STYLE:-default}_$1
+}
 
-compile_prompt() {
-  local out=''
-  for module in "${PS1_MODILES[@]}"; do
-    source `dirname $0`/module/$module.sh
-    if [[ type -t "__ps1_module_${module}_prompt_prefix" == 'function' ]]; then
-      out+=$(__ps1_module_${module}_prompt_prefix)
-    fi
-  done
-  for arg in "${arg[@]}"; do
-    case "$arg" in
-      :fg:*)         out+=$(__prompt_ansi 3$(__ansi_color ${arg:4}));;
-      :bg:*)         out+=$(__prompt_ansi 4$(__ansi_color ${arg:4}));;
-      :reset)        out+=$(__prompt_ansi 0);;
-      :clear)        out+='\[\e[H\e[2J\]';;
-      +title)        out+='\[\e]0;\]';;        -title)     out+='\a';;
-      +bold)         out+=$(__prompt_ansi 1);; -bold)      out+=$(__prompt_ansi 21);;
-      +dim)          out+=$(__prompt_ansi 2);; -dim)       out+=$(__prompt_ansi 22);;
-      +italic)       out+=$(__prompt_ansi 3);; -italic)    out+=$(__prompt_ansi 23);;
-      +underline)    out+=$(__prompt_ansi 4);; -underline) out+=$(__prompt_ansi 24);;
-      +blink)        out+=$(__prompt_ansi 5);; -blink)     out+=$(__prompt_ansi 25);;
-      +reverse)      out+=$(__prompt_ansi 7);; -reverse)   out+=$(__prompt_ansi 27);;
-      +hidden)       out+=$(__prompt_ansi 8);; -hidden)    out+=$(__prompt_ansi 28);;
-      :eol)          out+=$(__prompt_ansi 0)'\n';;
-      :user)         out+='\u';;
-      :dir)          out+='\w';;
-      :basename)     out+='\W';;
-      :host)         out+='\h';;
-      :fqdn)         out+='\H';;
-      :date)         out+='\d';;
-      :escape)       out+='\e';;
-      :jobs)         out+='\j';;
-      :device)       out+='\l';;
-      :nl|:newline)  out+='\n';;
-      :cr|:return)   out+='\r';;
-      :bell)         out+='\a';;
-      :shell)        out+='\s';;
-      :time|time-24) out+='\t';;
-      :time-12)      out+='\T';;
-      :time-ampm)    out+='\@';;
-      :version)      out+='\v';;
-      :version-full) out+='\V';;
-      :history)      out+='\!';;
-      :command)      out+='\#';;
-      :prompt)       out+='\$';;
-      :backslash)    out+='\\';;
-      :status)       out+='`__ps1_status`';;
-      :statusline)   out+='`__ps1_status --newline`';;
-      :title*)       opts=''
-                     [[ "$arg" == *'no-user'* ]] || [[ "$arg" == *'no-host'* ]] && opts+='\u' || opts+='\u@'
-                     [[ "$arg" == *'no-host'* ]] || [[ "$arg" == *'fqdn'* ]] && opts+='\H' || opts+='\h'
-                     [[ "$arg" == *'no-dir'* ]] || [[ "$arg" == *'base'* ]] && opts+=' \W' || opts+=' \w'
-                     out+='\[\e]0;\]`[[ "$PS1_TITLE" ]] && echo -n "$PS1_TITLE - "`'"$opts"'\a'
-                     ;;
-      *)             out+="$arg";;
-    esac
-  done
-  echo -n "$out"
+__ps1_style_default_block_start() { echo -n "+reverse '▏'"; }
+__ps1_style_default_block_end()   { echo -n "' ' -reverse"; }
+__ps1_style_default_block_pad()   { echo -n "' '"; }
+
+__ps1_config() {
+  local module="$1"
+  local key="$2"
+  [[ "$(type -t __ps1_module_${module}_${key})" == 'function' ]] \
+    && __ps1_module_${module}_${key} && return
+  [[ "$(type -t __ps1_default_${key})" == 'function' ]] \
+    && __ps1_module_default_${key}
 }
 
 __ps1_status() {
-  for module in "${PS1_MODILES[@]}"; do
-    if [[ type -t "__ps1_module_${module}_output" == 'function' ]]; then
-      out=$(__ps1_module_${module}_output)
+  local out=''
+  for module in ${PS1_MODULES}; do
+    [[ "$(type -t __ps1_module_${module}_output)" == 'function' ]] \
+      || source $PS1_ROOT/module/${module}.sh
+    local module_out=$(__ps1_module_${module}_output)
+    if [[ "$module_out" != '' ]]; then
+      [[ "$out" != '' ]] && out+="$(__ps1_ansi_code $(__ps1_style block_pad))"
+      out+="$(
+        __ps1_ansi_compile \
+          :fg:$(__ps1_config $module fg) \
+          :bg:$(__ps1_config $module bg) \
+          $(__ps1_style block_start) \
+          $(__ps1_config $module prefix) \
+          '$module_out' \
+          $(__ps1_config $module postfix) \
+          $(__ps1_style block_end)
+      )"
     fi
   done
-  [[ "$1" == '--newline' ]] && echo _ansi :eol
+  [[ "$out" ]] || return
+  echo $out
+  [[ "$1" == '--newline' ]] && echo __ps1_ansi_compile :eol
 }
 
-__ps1_status_block() {
-  local msg=$(cat -)
-  [[ "$msg" ]] || return
-  PS1_STATUS="$msg" __ansi :$1
-}
-
-export PS1_MODULES=(error)
+case "$TERM" in linux|xterm*|*vt*|con*|*ansi*|screen) export PS1_ANSI_TERM=1;; esac
+export PS1_ROOT=$(cd "$(dirname '${BASH_SOURCE[@]}')" &>/dev/null && pwd)
+export PS1_MODULES=${PS1_MODULES:-error}
+export PATH="$PATH:$PS1_ROOT/bin"
 
