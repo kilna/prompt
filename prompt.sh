@@ -1,91 +1,87 @@
 #!/bin/bash
 
+
+case "$TERM" in linux|xterm*|*vt*|con*|*ansi*|screen) export ANSI_TERM=1;; esac
+
 title() { export PS1_TITLE="$1"; }
 
-__ps1_ansi_term() {
-  case "$TERM" in
-    xterm*)   return 0 ;;
-    *vt*)     return 0 ;;
-    konsole*) return 0 ;;
-    ansi*)    return 0 ;;
-    *)        return 1 ;;
+__prompt_ansi() { echo -n '\[\e\[${1}m\]'; }
+__ansi_color() {
+  case "$1" in
+    black)   echo -n 0;;
+    red)     echo -n 1;;
+    green)   echo -n 2;;
+    yellow)  echo -n 3;;
+    blue)    echo -n 4;;
+    magenta) echo -n 5;;
+    cyan)    echo -n 6;;
+    white)   echo -n 7;;
   esac
 }
 
-__ansi() {
-  __ps1_ansi_term || return
-  items=()
-  for spec in "$@"; do
-    if [[ "${spec:0:1}" == ':' ]]; then
-      local varname='$PS1_'"${spec:1}"
-      items+=(eval '__ansi '"${varname^^}")
-    else
-      items+=("$spec")
-    fi
-  done
-  for item in "${items[@]}"; do
-    echo "ITEM: $item"
-    case "$item" in
-      +black)       echo -en '\e[30m'    ;;
-      +red)         echo -en '\e[31m'    ;;
-      +green)       echo -en '\e[32m'    ;;
-      +yellow)      echo -en '\e[33m'    ;;
-      +blue)        echo -en '\e[34m'    ;;
-      +magenta)     echo -en '\e[35m'    ;;
-      +cyan)        echo -en '\e[36m'    ;;
-      +white)       echo -en '\e[37m'    ;;
-      +blackbg)     echo -en '\e[40m'    ;;
-      +redbg)       echo -en '\e[41m'    ;;
-      +greenbg)     echo -en '\e[42m'    ;;
-      +yellowbg)    echo -en '\e[43m'    ;;
-      +bluebg)      echo -en '\e[44m'    ;;
-      +magentabg)   echo -en '\e[45m'    ;;
-      +cyanbg)      echo -en '\e[46m'    ;;
-      +whitebg)     echo -en '\e[47m'    ;;
-      +bold)        echo -en '\e[1m'     ;;
-      -bold)        echo -en '\e[21m'    ;;
-      +dim)         echo -en '\e[2m'     ;;
-      -dim)         echo -en '\e[22m'    ;;
-      +italic)      echo -en '\e[3m'     ;;
-      -italic)      echo -en '\e[23m'    ;;
-      +underline)   echo -en '\e[4m'     ;;
-      -underline)   echo -en '\e[24m'    ;;
-      +blink)       echo -en '\e[5m'     ;;
-      -blink)       echo -en '\e[25m'    ;;
-      +reverse)     echo -en '\e[7m'     ;;
-      -reverse)     echo -en '\e[27m'    ;;
-      +hidden)      echo -en '\e[8m'     ;;
-      -hidden)      echo -en '\e[28m'    ;;
-      +title)       echo -en '\e]0;'     ;;
-      -notitle)     echo -en '\a'        ;;
-      +reset)       echo -en '\e[0m'     ;;
-      +clear)       echo -en '\e[H\e[2J' ;;
-      *)            echo -n "$code"      ;;
+set_prompt() {
+  local prompt=''
+  for item in "${arg[@]}"; do
+    case "$arg" in
+      :fg:*) prompt+=$(__prompt_ansi 3$(__ansi_color ${arg:4}));;
+      :bg:*) prompt+=$(__prompt_ansi 4$(__ansi_color ${arg:4}));;
+      :reset) prompt+=$(__prompt_ansi 0);;
+      :clear) prompt+='\e[H\e[2J';;
+      +title)     prompt+='\[\e]0;\]';;        -title)     prompt+='\a';;
+      +bold)      prompt+=$(__prompt_ansi 1);; -bold)      prompt+=$(__prompt_ansi 21);;
+      +dim)       prompt+=$(__prompt_ansi 2);; -dim)       prompt+=$(__prompt_ansi 22);;
+      +italic)    prompt+=$(__prompt_ansi 3);; -italic)    prompt+=$(__prompt_ansi 23);;
+      +underline) prompt+=$(__prompt_ansi 4);; -underline) prompt+=$(__prompt_ansi 24);;
+      +blink)     prompt+=$(__prompt_ansi 5);; -blink)     prompt+=$(__prompt_ansi 25);;
+      +reverse)   prompt+=$(__prompt_ansi 7);; -reverse)   prompt+=$(__prompt_ansi 27);;
+      +hidden)    prompt+=$(__prompt_ansi 8);; -hidden)    prompt+=$(__prompt_ansi 28);;
+      :newline)      prompt+='\n'$(__prompt_ansi 0);;
+      :user)         prompt+='\u' ;;
+      :dir)          prompt+='\w' ;;
+      :basename)     prompt+='\W' ;;
+      :host)         prompt+='\h' ;;
+      :fqdn)         prompt+='\H' ;;
+      :date)         prompt+='\d' ;;
+      :escpae)       prompt+='\e' ;;
+      :jobs)         prompt+='\j' ;;
+      :device)       prompt+='\l' ;;
+      :nl|:newline)  prompt+='\n' ;;
+      :cr|:return)   prompt+='\r' ;;
+      :shell)        prompt+='\s' ;;
+      :time|time-24) prompt+='\t' ;;
+      :time-12)      prompt+='\T' ;;
+      :time-ampm)    prompt+='\@' ;;
+      :version)      prompt+='\v' ;;
+      :version-full) prompt+='\V' ;;
+      :history)      prompt+='\!' ;;
+      :command)      prompt+='\#' ;;
+      :prompt)       prompt+='\$' ;;
+      :backslash)    prompt+='\\' ;;
+      :status)       prompt+='`__ps1_status`' ;;
+      :statusline)   prompt+='`__ps1_status --newline`' ;;
+      :title*)       opts=''
+                     [[ "$arg" == *'no-user'* ]] || [[ "$arg" == *'no-host'* ]] && opts+='\u' || opts+='\u@'
+                     [[ "$arg" == *'no-host'* ]] || [[ "$arg" == *'fqdn'* ]] && opts+='\H' || opts+='\h'
+                     [[ "$arg" == *'no-dir'* ]] || [[ "$arg" == *'base'* ]] && opts+=' \W' || opts+=' \w'
+                     prompt+='\[\e]0;\]`[[ "$PS1_TITLE" ]] && echo -n "$PS1_TITLE - "`'"$opts"'\a'
+                     ;;
+      *)             prompt+="$arg" ;;
     esac
   done
+  export PS1="$prompt"
 }
 
 __ps1_status() {
+  export PS1_LAST_EXIT=$?
+}
+
+__ps1_status_block() {
   local msg=$(cat -)
   [[ "$msg" ]] || return
   PS1_STATUS="$msg" __ansi :$1
 }
 
 __ps1() {
-  local last_err=$?
-  if __ps1_ansi_term; then
-    local title=''
-    if [[ "$PS1_TITLE" ]]; then
-      title="$PS1_TITLE"
-    else
-      if [[ "${PS1_SHOW_HOST:-true}" == 'true' ]]; then
-        title="${USER,,}@${HOSTNAME,,} "
-      fi
-      title+="$(dirs +0)"
-    fi
-    __ansi +title "$title" -title
-  fi
-  echo
   local status_line=$(
     set -o pipefail
     (( $last_err )) && echo "$last_err" | __ps1_status ERROR 
@@ -95,21 +91,14 @@ __ps1() {
   if [[ "${PS1_SHOW_HOST:-true}" == 'true' ]]; then
     __ansi :USER "${USER,,}" :PROMPT '@' :HOSTNAME "${HOSTNAME,,}" ' ' +reset
   fi
-  __ansi :DIR "$(dirs +0)" :PROMPT "$( (( EUID )) && echo -n '$ ' || echo -n '# ' )" +reset
+  __ansi :DIR "$(dirs +0)" :PROMPT "$( (( EUID )) && prompt+='$ ' || prompt+='# ' )" +reset
   echo
 }
 
-export PS1_USER='+magenta'
-export PS1_PROMPT='+white'
-export PS1_HOSTNAME='+cyan'
-export PS1_DIR='+green'
 export PS1_STATUS_PREFIX="+reverse '▏ '"
 export PS1_STATUS_SEPARATOR="' '"
 export PS1_STATUS_POSTFIX="' '"
 export PS1_ERROR="+red :STATUS_PREFIX +blink +yellowbg '⚠' +blackgb -blink :STATUS_SEPARATOR :STATUS :STATUS_POSTFIX"
 export PS1_GITBRANCH="+blue :STATUS_PREFIX '⌥' :STATUS_SEPARATOR :STATUS :STATUS_POSTFIX"
 
-export PS1='`__ps1`'
-export USER="${USER:-${USERNAME:-$(whoami)}}"
-export HOSTNAME="${HOSTNAME:-$(hostname)}"
 
