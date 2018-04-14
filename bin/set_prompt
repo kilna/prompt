@@ -1,11 +1,15 @@
 #!/bin/bash
 
+[[ "$(type -t __ps1_ansi_color)" == 'function' ]] \
+  || echo "$0 must be run after sourcing prompt.sh" && exit 1
+
 prompt_ansi() { echo -n '\[\e\[${1}m\]'; }
 
-testmode=0; [[ "$1" == -t || "$1" == --test ]] && testmode=1
+debug=0; [[ "$1" == -d || "$1" == --debug ]] && debug=1 && shift
 
 out=''
-for arg in "${arg[@]}"; do
+for arg in "$@"; do
+  (( debug )) && echo "ARG: $arg"
   case "$arg" in
     :fg:*)         out+=$(prompt_ansi 3$(__ps1_ansi_color ${arg:4}));;
     :bg:*)         out+=$(prompt_ansi 4$(__ps1_ansi_color ${arg:4}));;
@@ -54,5 +58,5 @@ for arg in "${arg[@]}"; do
   esac
 done
 
-(( testmode )) && echo -n "$out" || export PS1=$out
+(( debug )) && echo -n "$out" || export PS1=$out
 

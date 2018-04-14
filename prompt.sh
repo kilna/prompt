@@ -11,7 +11,7 @@ __ps1_ansi_color() {
 
 __ps1_ansi_compile() {
   local out=''
-  for arg in "${arg[@]}"; do
+  for arg in "$@"; do
     case "$arg" in
       :*|+*|-*)
         if [[ "${PS1_ANSI_TERM:-0}" -ne 0 ]]; then
