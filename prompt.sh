@@ -76,5 +76,7 @@ __ps1() {
   echo '$ '
 }
 
+export USER="${USER:-${USERNAME:-`whoami`}}"
+export HOSTNAME="${HOSTNAME:-`hostname`}"
 export PS1='`__ps1`'
 
