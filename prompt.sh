@@ -1,5 +1,18 @@
 #!/bin/bash
 
+set_title() { export PS1_TITLE="$1"; }
+set_prompt() {
+  args=("$@")
+  if (( "$#" == 0 )) ; then
+    args=(
+      :statusline
+      :fg:cyan :user :fg:white @ :fg:blue :host :reset :space :fg:green :dir :eol
+      :prompt :space
+    )
+  fi
+  export PS1="$(__ps1_prompt "${args[@]}")";
+}
+
 __ps1_ansi_echo() { (( PS1_ANSI_TERM )) && echo -en "$1"; }
 
 __ps1_ansi() {
@@ -8,7 +21,7 @@ __ps1_ansi() {
     case "$arg" in
       :nl|:newline)  echo;;
       :space)        echo -n ' ';;
-      :eol)          __ps1_ansi_echo '\e[0m\n';;
+      :eol)          __ps1_ansi_echo '\e[0m\n\e[0m';; # Handy when bash eats a trailing newline
       :clear)        __ps1_ansi_echo '\e[H\e[2J';;
       +title)        __ps1_ansi_echo '\e]0;';;
       -title)        __ps1_ansi_echo '\a';;
@@ -48,10 +61,7 @@ __ps1_ansi() {
   done
 }
 
-set_title() { export PS1_TITLE="$1"; }
-
-set_prompt() {
-  out=''
+__ps1_prompt() {
   for arg in "$@"; do
     case "$arg" in
       :title*)
@@ -92,92 +102,90 @@ set_prompt() {
             opts="$opts \W"
           fi
         fi
-        out+='\[\e]0;\]'
+        echo -n '\[\e]0;\]'
         if [[ "${o[title]:-before}" == 'before' ]]; then
-          out+='`[[ "$PS1_TITLE" ]] && echo -n "$PS1_TITLE - "`'
-          out+="$opts"
+          echo -n '`echo -n "$PS1_TITLE${PS1_title:+ - }"`'
+          echo -n "$opts"
         elif [[ "${o[title]:-before}" == 'after' ]]; then
-          out+="$opts"
-          out+='`[[ "$PS1_TITLE" ]] && echo -n " - $PS1_TITLE"`'
+          echo -n "$opts"
+          echo -n '`echo -n "${PS1_title:+ - }$PS1_TITLE"`'
         fi
-        out+='\a'
+        echo -n '\a'
         ;;
-      :nl|:newline)  out+='\n';;
-      :space)        out+=' ';;
-      :eol)          out+='\[\e[0m\]\n';;
-      +title)        out+='\[\e]0;\]';;
-      -title)        out+='\a';;
-      :reset)        out+='\[\e[0m\]';;
-      +bold)         out+='\[\e[1m\]';;
-      +dim)          out+='\[\e[2m\]';;
-      +italic)       out+='\[\e[3m\]';;
-      +underline)    out+='\[\e[4m\]';;
-      +blink)        out+='\[\e[5m\]';;
-      +reverse)      out+='\[\e[7m\]';;
-      +hidden)       out+='\[\e[8m\]';;
-      -bold)         out+='\[\e[21m\]';;
-      -dim)          out+='\[\e[22m\]';;
-      -italic)       out+='\[\e[23m\]';;
-      -underline)    out+='\[\e[24m\]';;
-      -blink)        out+='\[\e[25m\]';;
-      -reverse)      out+='\[\e[27m\]';;
-      -hidden)       out+='\[\e[28m\]';;
-      :fg:black)     out+='\[\e[30m\]';;
-      :fg:red)       out+='\[\e[31m\]';;
-      :fg:green)     out+='\[\e[32m\]';;
-      :fg:yellow)    out+='\[\e[33m\]';;
-      :fg:blue)      out+='\[\e[34m\]';;
-      :fg:magenta)   out+='\[\e[35m\]';;
-      :fg:cyan)      out+='\[\e[36m\]';;
-      :fg:white)     out+='\[\e[37m\]';;
-      :bg:black)     out+='\[\e[40m\]';;
-      :bg:red)       out+='\[\e[41m\]';;
-      :bg:green)     out+='\[\e[42m\]';;
-      :bg:yellow)    out+='\[\e[43m\]';;
-      :bg:blue)      out+='\[\e[44m\]';;
-      :bg:magenta)   out+='\[\e[45m\]';;
-      :bg:cyan)      out+='\[\e[46m\]';;
-      :bg:white)     out+='\[\e[47m\]';;
-      :clear)        out+='\[\e[H\e[2J\]';;
-      :user)         out+='\u';;
-      :dir)          out+='\w';;
-      :basename)     out+='\W';;
-      :host)         out+='\h';;
-      :fqdn)         out+='\H';;
-      :date)         out+='\d';;
-      :escape)       out+='\e';;
-      :jobs)         out+='\j';;
-      :device)       out+='\l';;
-      :nl|:newline)  out+='\n';;
-      :cr|:return)   out+='\r';;
-      :bell)         out+='\a';;
-      :shell)        out+='\s';;
-      :time|time-24) out+='\t';;
-      :time-12)      out+='\T';;
-      :time-ampm)    out+='\@';;
-      :version)      out+='\v';;
-      :version-full) out+='\V';;
-      :history)      out+='\!';;
-      :command)      out+='\#';;
-      :prompt)       out+='\$';;
-      :backslash)    out+='\\';;
-      :status)       out+='`__ps1_status`';;
-      :statusline)   out+='`__ps1_status --newline`';;
-      *)             out+="$arg";;
+      :nl|:newline)  echo -n '\n';;
+      :space)        echo -n ' ';;
+      :eol)          echo -n '\[\e[0m\]\n\[\e[0m\]';;
+      +title)        echo -n '\[\e]0;\]';;
+      -title)        echo -n '\a';;
+      :reset)        echo -n '\[\e[0m\]';;
+      +bold)         echo -n '\[\e[1m\]';;
+      +dim)          echo -n '\[\e[2m\]';;
+      +italic)       echo -n '\[\e[3m\]';;
+      +underline)    echo -n '\[\e[4m\]';;
+      +blink)        echo -n '\[\e[5m\]';;
+      +reverse)      echo -n '\[\e[7m\]';;
+      +hidden)       echo -n '\[\e[8m\]';;
+      -bold)         echo -n '\[\e[21m\]';;
+      -dim)          echo -n '\[\e[22m\]';;
+      -italic)       echo -n '\[\e[23m\]';;
+      -underline)    echo -n '\[\e[24m\]';;
+      -blink)        echo -n '\[\e[25m\]';;
+      -reverse)      echo -n '\[\e[27m\]';;
+      -hidden)       echo -n '\[\e[28m\]';;
+      :fg:black)     echo -n '\[\e[30m\]';;
+      :fg:red)       echo -n '\[\e[31m\]';;
+      :fg:green)     echo -n '\[\e[32m\]';;
+      :fg:yellow)    echo -n '\[\e[33m\]';;
+      :fg:blue)      echo -n '\[\e[34m\]';;
+      :fg:magenta)   echo -n '\[\e[35m\]';;
+      :fg:cyan)      echo -n '\[\e[36m\]';;
+      :fg:white)     echo -n '\[\e[37m\]';;
+      :bg:black)     echo -n '\[\e[40m\]';;
+      :bg:red)       echo -n '\[\e[41m\]';;
+      :bg:green)     echo -n '\[\e[42m\]';;
+      :bg:yellow)    echo -n '\[\e[43m\]';;
+      :bg:blue)      echo -n '\[\e[44m\]';;
+      :bg:magenta)   echo -n '\[\e[45m\]';;
+      :bg:cyan)      echo -n '\[\e[46m\]';;
+      :bg:white)     echo -n '\[\e[47m\]';;
+      :clear)        echo -n '\[\e[H\e[2J\]';;
+      :user)         echo -n '\u';;
+      :dir)          echo -n '\w';;
+      :basename)     echo -n '\W';;
+      :host)         echo -n '\h';;
+      :fqdn)         echo -n '\H';;
+      :date)         echo -n '\d';;
+      :escape)       echo -n '\e';;
+      :jobs)         echo -n '\j';;
+      :device)       echo -n '\l';;
+      :bell)         echo -n '\a';;
+      :shell)        echo -n '\s';;
+      :time|time-24) echo -n '\t';;
+      :time-12)      echo -n '\T';;
+      :time-ampm)    echo -n '\@';;
+      :version)      echo -n '\v';;
+      :version-full) echo -n '\V';;
+      :history)      echo -n '\!';;
+      :command)      echo -n '\#';;
+      :prompt)       echo -n '\$';;
+      :backslash)    echo -n '\\';;
+      :status)       echo -n '`__ps1_status`';;
+      :statusline)   echo -n '`__ps1_status -n`';;
+      *)             echo -n "$arg";;
     esac
   done
-  export PS1="$out"
 }
 
-__ps1_default_fg()     { echo -n white; }
-__ps1_default_bg()     { echo -n black; }
-__ps1_default_prefix() { echo -n; }
+__ps1_default_fg()      { echo -n white; }
+__ps1_default_bg()      { echo -n black; }
+__ps1_default_prefix()  { echo -n; }
+__ps1_default_postfix() { echo -n; }
 
 __ps1_style() {
-#  if [[ "${PS1_STYLE:-default}" != 'default' ]]; then
-#    [[ "$(type -t __ps1_style_${PS1_STYLE}_$1)" == 'function' ]] \
-#      || source $PS1_ROOT/style/${PS1_STYLE}.sh
-#  fi
+  if [[ "${PS1_STYLE:-default}" != 'default' ]]; then
+    [[ "$(type -t __ps1_style_${PS1_STYLE}_$1)" == 'function' ]] \
+      || source $PS1_ROOT/style/${PS1_STYLE}.sh
+  fi
   __ps1_style_${PS1_STYLE:-default}_$1
 }
 
@@ -194,7 +202,7 @@ __ps1_config() {
     && __ps1_module_default_${key}
 }
 
-__ps1_module_error_output()  { [[ "$PS1_LAST_ERR" != 0 ]] && echo -n $PS1_LAST_ERR; }
+__ps1_module_error_output()  { (( "$PS1_LAST_ERR" )) && echo -n $PS1_LAST_ERR; }
 __ps1_module_error_fg()      { echo -n red; }
 __ps1_module_error_bg()      { echo -n black; }
 __ps1_module_error_prefix()  { echo -n +blink ⚠ -blink :space; }
@@ -202,19 +210,23 @@ __ps1_module_error_postfix() { echo -n; }
 
 __ps1_status() {
   export PS1_LAST_ERR="$?"
-  local out=''
+  while (( "$#" > 0 )); do arg="$1"; shift;
+    case "$arg" in
+      -n|--newline) newline=1;;
+    esac
+  done
+  local status_items=0
   for module in ${PS1_MODULES}; do
     local module_out=$(__ps1_module_${module}_output)
     if [[ "$module_out" != '' ]]; then
-      [[ "$out" != '' ]] && __ps1_ansi $(__ps1_style block_pad)
+      (( status_items++ )) && __ps1_ansi $(__ps1_style block_pad)
       __ps1_ansi :fg:$(__ps1_config $module fg) :bg:$(__ps1_config $module bg) \
                  $(__ps1_style block_start) $(__ps1_config $module prefix)
       echo -n "$module_out"
-      __ps1_ansi $(__ps1_config $module postfix) $(__ps1_style block_end) :reset
+      __ps1_ansi $(__ps1_config $module postfix) $(__ps1_style block_end)
     fi
   done
-  [[ "$out" ]] || return
-  [[ "$1" == '--newline' ]] && echo
+  (( status_items )) && (( newline )) && __ps1_ansi :eol
 }
 
 case "$TERM" in linux|xterm*|*vt*|con*|*ansi*|screen) export PS1_ANSI_TERM=1;; esac
