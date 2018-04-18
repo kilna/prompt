@@ -1,14 +1,16 @@
 #!/bin/bash
 
-
 set_title() { export PS1_TITLE="$1"; }
 unset_title() { unset PS1_TITLE; }
 
 set_prompt() {
   export PS1_ORIG="$PS1"
   args=("$@")
-  (( "$#" == 0 )) && args=( :newline :statusline :user '@' :host ' '
-    :dir :title :eol :date ' ' :time ' ' :prompt ' ' :reset )
+  (( "$#" == 0 )) && args=(
+    :newline :statusline
+    :user '@' :host :space :dir :title :eol
+    :prompt :space :reset
+  )
   export PS1="$(__ps1_prompt "${args[@]}")";
 }
 unset_prompt() { export PS1="$PS1_ORIG"; }
@@ -130,9 +132,13 @@ __ps1_style_default_host()        { echo -n :fg magenta; }
 __ps1_style_default_dir()         { echo -n :fg green; }
 __ps1_style_default_time()        { echo -n :fg blue +reverse; }
 __ps1_style_default_date()        { echo -n :fg blue +reverse; }
-__ps1_style_default_block_start() { echo -n +reverse '▏'; }
-__ps1_style_default_block_end()   { echo -n ' '; }
-__ps1_style_default_block_pad()   { echo -n; }
+__ps1_style_default_block_start() { echo -n '[' :space; }
+__ps1_style_default_block_end()   { echo -n :space ']'; }
+__ps1_style_default_block_pad()   { echo -n :space; }
+
+__ps1_style_block_block_start() { echo -n +reverse '▏'; }
+__ps1_style_block_block_end()   { echo -n :space; }
+__ps1_style_block_block_pad()   { echo -n; }
 
 __ps1_config() {
   local module="$1"
