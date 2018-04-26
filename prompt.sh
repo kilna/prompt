@@ -1,40 +1,87 @@
 #!/bin/bash
 
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  cat <<EOF >&2
+This script is meant to be added into a bash shell session via:
+
+source $0
+
+You cannot call this script directly.
+EOF
+  return 1
+fi
+
 set_title() { export PS1_TITLE="$1"; }
 unset_title() { unset PS1_TITLE; }
 
 set_prompt() {
-  [[ "$PS1_ORIG" == "" ]] && export PS1_ORIG="$PS1"
+  if [[ "$PS1_ORIG" == "" ]]; then
+    export PS1_ORIG="$PS1"
+  fi
   export PS1="$(__ps1_prompt "$@")";
 }
+
 default_prompt() {
   set_prompt :title :statusline :user '@' :host :space :dir :eol :prompt :space :reset
 }
-unset_prompt() { export PS1="$PS1_ORIG"; unset PS1_ORIG; }
+
+unset_prompt() {
+  export PS1="$PS1_ORIG"
+  unset PS1_ORIG
+}
+
+__ps1_unicode() {
+  case "$LANG" in
+    *'UTF-8'*) return 0;;
+    *)         return 1;;
+  esac
+}
 
 __ps1_color() {
-  [[ "$1" == ':bg' ]] && prefix='4' || prefix='3'
+  case "$1" in
+    :bg) prefix='4';;
+    :fg) prefix='3';;
+  esac
   case "$2" in
-    black) echo -n '\e['$prefix'0m';;  red)     echo -n '\e['$prefix'1m';;
-    green) echo -n '\e['$prefix'2m';;  yellow)  echo -n '\e['$prefix'3m';;
-    blue)  echo -n '\e['$prefix'4m';;  magenta) echo -n '\e['$prefix'5m';;
-    cyan)  echo -n '\e['$prefix'6m';;  white)   echo -n '\e['$prefix'7m';;
+    black)   echo -n '\e['$prefix'0m';;
+    red)     echo -n '\e['$prefix'1m';;
+    green)   echo -n '\e['$prefix'2m';;
+    yellow)  echo -n '\e['$prefix'3m';;
+    blue)    echo -n '\e['$prefix'4m';;
+    magenta) echo -n '\e['$prefix'5m';;
+    cyan)    echo -n '\e['$prefix'6m';;
+    white)   echo -n '\e['$prefix'7m';;
   esac
 }
 
 __ps1_mode() {
-  [[ "${1:0:1}" == '-' ]] && prefix='2'
+  prefix=''
+  if [[ "${1:0:1}" == '-' ]]; then
+    prefix='2'
+  fi
   case "${1:1}" in
-    bold)    echo -n '\e['$prefix'1m';;  dim)       echo -n '\e['$prefix'2m';;
-    italic)  echo -n '\e['$prefix'3m';;  underline) echo -n '\e['$prefix'4m';;
-    blink)   echo -n '\e['$prefix'5m';;  fastblink) echo -n '\e['$prefix'6m';;
-    reverse) echo -n '\e['$prefix'7m';;  hidden)    echo -n '\e['$prefix'8m';;
+    bold)      echo -n '\e['$prefix'1m';;
+    dim)       echo -n '\e['$prefix'2m';;
+    italic)    echo -n '\e['$prefix'3m';;
+    underline) echo -n '\e['$prefix'4m';;
+    blink)     echo -n '\e['$prefix'5m';;
+    fastblink) echo -n '\e['$prefix'6m';;
+    reverse)   echo -n '\e['$prefix'7m';;
+    hidden)    echo -n '\e['$prefix'8m';;
   esac
 }
 
-__ps1_ansi_echo() { (( PS1_ANSI_TERM )) && echo -en "$1"; }
+__ps1_ansi_echo() {
+  case "$TERM" in
+    linux|xterm*|*vt*|con*|*ansi*|screen) echo -en "$1";;
+  esac
+}
 
-__ps1_stylize() { content="$1"; shift; __ps1_ansi $(__ps1_style "$@") "$content" :reset; }
+__ps1_stylize() {
+  content="$1"
+  shift
+  __ps1_ansi $(__ps1_style "$@") "$content" :reset
+}
 
 __ps1_ansi() {
   while (( "$#" > 0 )); do
@@ -107,80 +154,52 @@ __ps1_prompt() {
 __ps1_style() {
   style="${PS1_STYLE:-default}"
   properties=("$@" 'default')
-#  if [[ "$style" != 'default' && \
-#        "$(type -t __ps1_style_${style}_default)" != 'function' && \
-#        -e $PS1_ROOT/style/$style.sh ]]; then
-#    source $PS1_ROOT/style/$style.sh
-#  fi
   for property in "${properties[@]}"; do
     __ps1_style_${style}_$property 2>/dev/null && return
+    __ps1_style_default_$property 2>/dev/null
   done
-}
-
-__ps1_style_default_user()        { echo -n :fg cyan; }
-__ps1_style_default_host()        { echo -n :fg magenta; }
-__ps1_style_default_dir()         { echo -n :fg green; }
-__ps1_style_default_time()        { echo -n :fg blue +reverse; }
-__ps1_style_default_date()        { echo -n :fg blue +reverse; }
-
-__ps1_style_default_block_start() { __ps1_style_minimal_block_start; }
-__ps1_style_default_block_end()   { __ps1_style_minimal_block_end; }
-__ps1_style_default_block_pad()   { __ps1_style_minimal_block_pad; }
-
-__ps1_style_solid_block_start() { echo -n +reverse :space; }
-__ps1_style_solid_block_end()   { echo -n :space; }
-__ps1_style_solid_block_pad()   { echo -n :space; }
-
-__ps1_style_plain_block_start() { echo -n '[' :space; }
-__ps1_style_plain_block_end()   { echo -n :space ']'; }
-__ps1_style_plain_block_pad()   { echo -n :space; }
-
-__ps1_style_plain_minimal_start() { :; }
-__ps1_style_plain_minimal_end()   { :; }
-__ps1_style_plain_minimal_pad()   { echo -n :space; }
-
-
-__ps1_config() {
-  local module="$1"
-  local key="$2"
-  [[ "$(type -t __ps1_module_${module}_${key})" == 'function' ]] && __ps1_module_${module}_${key} && return
-  [[ "$(type -t __ps1_module_default_${key})"   == 'function' ]] && __ps1_module_default_${key}
-}
-
-__ps1_module_default_color()   { echo -n white; }
-__ps1_module_default_prefix()  { :; }
-__ps1_module_default_postfix() { :; }
-
-__ps1_module_error_output()  { (( "$PS1_LAST_ERR" )) && echo -n $PS1_LAST_ERR; }
-__ps1_module_error_color()   { echo -n red; }
-__ps1_module_error_prefix()  { echo -n +blink ⚠ -blink :space; }
-__ps1_module_error_postfix() { :; }
-
-__ps1_statusline() {
-  err="$?"
-  local out="$($(exit $err); __ps1_status)"
-  if [[ "$out" ]]; then echo "$out"; __ps1_ansi :eol; fi
 }
 
 __ps1_status() {
   export PS1_LAST_ERR="$?"
+  #echo "PS1_LAST_ERR = $PS1_LAST_ERR"
   local status_items=0
-  for module in ${PS1_MODULES}; do
-    if [[ "$(type -t __ps1_module_${module}_output)" != 'function' && -e $PS1_ROOT/module/$module.sh ]]; then
-      source $PS1_ROOT/module/$module.sh
-    fi
-    local module_out=$(__ps1_module_${module}_output)
-    if [[ "$module_out" != '' ]]; then
-      (( status_items++ )) && __ps1_ansi $(__ps1_style block_pad)
-      __ps1_ansi :fg $(__ps1_config $module color) $(__ps1_style block_start) \
-        $(__ps1_config $module prefix) "$module_out" $(__ps1_config $module postfix) \
-        $(__ps1_style block_end) :reset
-    fi
+  for module in "${PS1_MODULES[@]}"; do
+    local module_out="$(__ps1_module_${module}_output)"
+    [[ "$module_out" == '' ]] && continue
+    (( status_items++ )) && __ps1_ansi $(__ps1_style block_pad)
+    __ps1_ansi \
+      :fg $(__ps1_module_${module}_color) \
+      $(__ps1_style block_start) \
+      $(__ps1_module_${module}_prefix) \
+      "$module_out" \
+      $(__ps1_module_${module}_postfix) \
+      $(__ps1_style block_end) \
+      :reset
   done
+  unset PS1_LAST_ERR
+  if [[ "$status_items" > 0 && "$1" == '-n' ]]; then
+    __ps1_ansi :eol
+  fi
 }
 
-case "$TERM" in linux|xterm*|*vt*|con*|*ansi*|screen) export PS1_ANSI_TERM=1;; esac
-export PS1_ROOT=$(cd "$(dirname '${BASH_SOURCE[@]}')" &>/dev/null && pwd)
-export PS1_MODULES="${PS1_MODULES:-error git}"
-[[ "$PS1_ORIG" == "" ]] && default_prompt
+PS1_ROOT=$(cd "$(dirname '${BASH_SOURCE[@]}')" &>/dev/null && pwd)
+
+export PS1_MODULES=()
+for module in "$@"; do
+  source $PS1_ROOT/module/$module.sh
+  (( "$?" )) || PS1_MODULES+=("$module")
+done
+#for module in "${PS1_MODULES[@]}"; do
+#  echo "MODULE: $module"
+#done
+
+for style in "$(ls -1 $PS1_ROOT/style/*.sh)"; do
+  $style
+done
+export PS1_STYLE=solid
+
+if [[ "$PS1_ORIG" == '' ]]; then
+  default_prompt
+fi
 
