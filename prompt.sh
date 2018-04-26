@@ -30,6 +30,14 @@ unset_prompt() {
   unset PS1_ORIG
 }
 
+reset_prompt() {
+  unset_prompt
+  unset PS1_MODULES
+  unset PS1_TYPE
+  source $PS1_ROOT/prompt.sh "$@"
+}
+
+
 __ps1_unicode() {
   case "$LANG" in
     *'UTF-8'*) return 0;;
@@ -183,19 +191,26 @@ __ps1_status() {
   fi
 }
 
-PS1_ROOT=$(cd "$(dirname '${BASH_SOURCE[@]}')" &>/dev/null && pwd)
+export PS1_ROOT=$(cd "$(dirname '${BASH_SOURCE[@]}')" &>/dev/null && pwd)
 
-export PS1_MODULES=()
-for module in "$@"; do
-  source $PS1_ROOT/module/$module.sh
-  (( "$?" )) || PS1_MODULES+=("$module")
-done
+#for module in "$@"; do
+#  source $PS1_ROOT/module/$module.sh
+#  (( "$?" )) || PS1_MODULES+=("$module")
+#done
 #for module in "${PS1_MODULES[@]}"; do
 #  echo "MODULE: $module"
 #done
 
-for style in "$(ls -1 $PS1_ROOT/style/*.sh)"; do
-  $style
+export PS1_MODULES=()
+for module_path in $PS1_ROOT/module/*.sh; do
+  [[ -x $module_path ]] || continue
+  if source $module_path; then
+    PS1_MODULES+=("$(basename -s .sh $module_path)")
+  fi
+done
+
+for style_path in $PS1_ROOT/style/*.sh; do
+  source $style_path
 done
 export PS1_STYLE=solid
 

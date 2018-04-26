@@ -2,7 +2,7 @@
 
 __ps1_style_solid_block_start() {
   if __ps1_unicode; then
-    echo -n "+reverse '▏'"
+    echo -n "+reverse $(printf '\u258F')"
   else
     echo -n +reverse :space
   fi
