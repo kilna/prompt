@@ -146,7 +146,8 @@ __ps1_module_error_prefix()  { echo -n +blink ⚠ -blink :space; }
 __ps1_module_error_postfix() { echo -n; }
 
 __ps1_statusline() {
-  out="$($(exit $?); __ps1_status)"
+  err="$?"
+  out="$($(exit $err); __ps1_status)"
   if [[ "$out" ]]; then echo "$out"; __ps1_ansi :eol; fi
 }
 
