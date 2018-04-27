@@ -18,11 +18,11 @@ set_prompt() {
   if [[ "$PS1_ORIG" == "" ]]; then
     export PS1_ORIG="$PS1"
   fi
-  export PS1="$(__ps1_prompt "$@")";
+  export PS1="$(__ps1_prompt :bootstrap "$@")";
 }
 
 default_prompt() {
-  set_prompt :title :statusline :user '@' :host :space :dir :eol :prompt :space :reset
+  set_prompt :statusline :user '@' :host :space :dir :eol :prompt :space :reset
 }
 
 unset_prompt() {
@@ -119,11 +119,13 @@ __ps1_prompt() {
     arg="$1"
     shift
     case "$arg" in
-      :title)
+      :bootstrap)
+        str='`export PS1_LAST_ERR="$?";`'
         local title="${PS1_TITLE_FORMAT:-\\z\\-\\u@\\h \\w}"
         title="${title//\\z/'`echo -n "$PS1_TITLE"`'}"
         title="${title//\\-/'`echo -n "${PS1_TITLE:+ - }"`'}"
-        echo -n '\[\e]0;\]'"$title"'\a'
+        str+='\[\e]0;\]'"$title"'\a'
+        echo -n "${str//\`\`/;}"
         ;;
       :nl|:newline)   echo -n '\n';;
       :space)         echo -n ' ';;
@@ -169,8 +171,6 @@ __ps1_style() {
 }
 
 __ps1_status() {
-  export PS1_LAST_ERR="$?"
-  #echo "PS1_LAST_ERR = $PS1_LAST_ERR"
   local status_items=0
   for module in "${PS1_MODULES[@]}"; do
     local module_out="$(__ps1_module_${module}_output)"
