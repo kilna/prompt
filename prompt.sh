@@ -18,11 +18,11 @@ set_prompt() {
   if [[ "$PS1_ORIG" == "" ]]; then
     export PS1_ORIG="$PS1"
   fi
-  export PS1="$(__ps1_prompt :bootstrap "$@")";
+  export PS1="$(__ps1_prompt "$@" :title)";
 }
 
 default_prompt() {
-  set_prompt :statusline :user '@' :host :space :dir :eol :prompt :space :reset
+  set_prompt :statusline :user '@' :host ' ' :dir :eol :prompt ' ' :reset
 }
 
 unset_prompt() {
@@ -119,8 +119,9 @@ __ps1_prompt() {
     arg="$1"
     shift
     case "$arg" in
-      :bootstrap)
-        str='`export PS1_LAST_ERR="$?";`'
+      :bootstrap)     
+        echo -n '`__ps1_bootstrap`';;
+      :title)     
         local title="${PS1_TITLE_FORMAT:-\\z\\-\\u@\\h \\w}"
         title="${title//\\z/'`echo -n "$PS1_TITLE"`'}"
         title="${title//\\-/'`echo -n "${PS1_TITLE:+ - }"`'}"
@@ -140,8 +141,8 @@ __ps1_prompt() {
       :prompt)        __ps1_prompt_stylize '\$' prompt;;
       :date)          __ps1_prompt_stylize '\d' date time;;
       :time|:time-24) __ps1_prompt_stylize '\t' time date;;
-      :time-12)       echo -n '\T';;
-      :time-ampm)     echo -n '\@';;
+      :time-12)       __ps1_prompt_stylize '\T' time date;;
+      :time-ampm)     __ps1_prompt_stylize '\@' time date;;
       :escape)        echo -n '\e';;
       :jobs)          echo -n '\j';;
       :device)        echo -n '\l';;
@@ -171,6 +172,7 @@ __ps1_style() {
 }
 
 __ps1_status() {
+  export PS1_LAST_ERR="$?"
   local status_items=0
   for module in "${PS1_MODULES[@]}"; do
     local module_out="$(__ps1_module_${module}_output)"
