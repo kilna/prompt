@@ -1,0 +1,370 @@
+#!/bin/bash
+
+title() {
+  export PS1_TITLE="$1"
+}
+
+notitle() {
+  unset PS1_TITLE
+}
+
+prompt() {
+  export PS1="$PS1_ORIG"
+  __ps1_debug "Running $PS1_SCRIPT"
+  if [[ -e $PS1_SCRIPT ]]; then
+    source $PS1_SCRIPT "$@"
+  else
+    echo "Unable to find PS1_SCRIPT: $PS1_SCRIPT" >&2
+    return 1
+  fi
+}
+
+noprompt() {
+  export PS1="$PS1_ORIG"
+  local debug="$PS1_DEBUG"
+  for var in $(typeset | grep -E ^PS1_.*= | cut -d '=' -f 1); do
+    [[ "$debug" ]] && echo "Unsetting $var" >&2
+    unset $var &>/dev/null
+  done
+  for func in $(typeset -F | cut -d ' ' -f 3 | grep -E '^__ps1_') title notitle prompt noprompt; do
+    [[ "$debug" ]] && echo "Unsetting $func" >&2
+    unset -f $func &>/dev/null
+  done
+}
+
+__ps1_debug() {
+  [[ "$PS1_DEBUG" ]] && echo "$@" >&2
+}
+
+__ps1_unicode() {
+  case "$LANG" in
+    *'UTF-8'*) return 0;;
+    *)         return 1;;
+  esac
+}
+
+__ps1_color() {
+  case "$1" in
+    :bg) prefix='4';;
+    :fg) prefix='3';;
+  esac
+  case "$2" in
+    black)   echo -n '\e['$prefix'0m';;
+    red)     echo -n '\e['$prefix'1m';;
+    green)   echo -n '\e['$prefix'2m';;
+    yellow)  echo -n '\e['$prefix'3m';;
+    blue)    echo -n '\e['$prefix'4m';;
+    magenta) echo -n '\e['$prefix'5m';;
+    cyan)    echo -n '\e['$prefix'6m';;
+    white)   echo -n '\e['$prefix'7m';;
+  esac
+}
+
+__ps1_mode() {
+  prefix=''
+  if [[ "${1:0:1}" == '-' ]]; then
+    prefix='2'
+  fi
+  case "${1:1}" in
+    bold)      echo -n '\e['$prefix'1m';;
+    dim)       echo -n '\e['$prefix'2m';;
+    italic)    echo -n '\e['$prefix'3m';;
+    underline) echo -n '\e['$prefix'4m';;
+    blink)     echo -n '\e['$prefix'5m';;
+    fastblink) echo -n '\e['$prefix'6m';;
+    reverse)   echo -n '\e['$prefix'7m';;
+    hidden)    echo -n '\e['$prefix'8m';;
+  esac
+}
+
+__ps1_ansi_echo() {
+  case "$TERM" in
+    linux|xterm*|*vt*|con*|*ansi*|screen) echo -en "$1";;
+  esac
+}
+
+__ps1_stylize() {
+  content="$1"
+  shift
+  __ps1_ansi $(__ps1_style "$@") "$content"
+}
+
+__ps1_ansi() {
+  while (( "$#" > 0 )); do
+    arg="$1"
+    shift
+    case "$arg" in
+      :nl|:newline) echo;;
+      :space)  echo -n ' ';;
+      :eol)    __ps1_ansi_echo '\e[0m\n\e[0m';; # Handy when bash eats a trailing newline
+      :clear)  __ps1_ansi_echo '\e[H\e[2J';;
+      :reset)  __ps1_ansi_echo '\e[0m';;
+      :style)  __ps1_ansi_echo $(__ps1_style "$1"); shift;;
+      :fg|:bg) __ps1_ansi_echo $(__ps1_color "$arg" "$1"); shift;;
+      +*|-*)   __ps1_ansi_echo $(__ps1_mode "$arg");;
+      *)       echo -n "$arg";;
+    esac
+  done
+}
+
+__ps1_prompt_stylize() {
+  content="$1"
+  shift
+  __ps1_prompt $(__ps1_style "$@") "$content" 
+}
+
+__ps1_title() {
+  local last_err="$?" # Cache last command's error...
+  if [[ "$PS1_TITLE" ]]; then
+    case "$PS1_TITLE_MODE" in
+      prepend)     echo -n "$PS1_TITLE"' - ';;
+      append)      echo -n ' - '"$PS1_TITLE";;
+      interpolate) echo -n "$PS1_TITLE";;
+    esac
+  fi
+  return $last_err # Needed by __ps1_status to show error
+}
+
+__ps1_prompt_title() {
+  if [[ "$PS1_TITLE_MODE" != 'disabled' ]]; then
+    echo -n '\[\e]0;\]'
+    case "$PS1_TITLE_MODE" in
+      static)      echo -n "$PS1_TITLE_FORMAT";;
+      prepend)     echo -n '`__ps1_title`'"$PS1_TITLE_FORMAT";;
+      append)      echo -n "$PS1_TITLE_FORMAT"'`__ps1_title`';;
+      interpolate) echo -n "${PS1_TITLE_FORMAT//\\z/'`__ps1_title`'}";;
+    esac
+    echo -n '\a'
+  fi
+}
+
+__ps1_prompt() {
+  while (( "$#" > 0 )); do
+    arg="$1"
+    shift
+    case "$arg" in
+      :nl|:newline)   echo -n '\n';;
+      :space)         echo -n ' ';;
+      :eol)           echo -n '\[\e[0m\]\n\[\e[0m\]';;
+      :reset)         echo -n '\[\e[0m\]';;
+      :fg|:bg)        echo -n '\['; __ps1_color "$arg" "$1"; shift; echo -n '\]';;
+      :user)          __ps1_prompt_stylize '\u' user;;
+      :dir)           __ps1_prompt_stylize '\w' dir;;
+      :basename)      __ps1_prompt_stylize '\W' basename dir;;
+      :host)          __ps1_prompt_stylize '\h' host;;
+      :fqdn)          __ps1_prompt_stylize '\H' fqdn host;;
+      :prompt)        __ps1_prompt_stylize '\$' prompt;;
+      :date)          __ps1_prompt_stylize '\d' date time;;
+      :time|:time-24) __ps1_prompt_stylize '\t' time date;;
+      :time-12)       __ps1_prompt_stylize '\T' time date;;
+      :time-ampm)     __ps1_prompt_stylize '\@' time date;;
+      :escape)        echo -n '\e';;
+      :jobs)          echo -n '\j';;
+      :device)        echo -n '\l';;
+      :bell)          echo -n '\a';;
+      :shell)         echo -n '\s';;
+      :version)       echo -n '\v';;
+      :version-full)  echo -n '\V';;
+      :history)       echo -n '\!';;
+      :command)       echo -n '\#';;
+      :prompt)        echo -n '\$';;
+      :backslash)     echo -n '\\';;
+      :style)         __ps1_prompt $(__ps1_style "$1");;
+      :status)        echo -n '`__ps1_status`';;
+      :statusline)    echo -n '`__ps1_status -n`';;
+      +*|-*)          echo -n '\['; __ps1_mode "$arg"; echo -n '\]';;
+      *)              echo -n "$arg";;
+    esac
+  done
+}
+
+__ps1_style() {
+  properties=("$@" 'default')
+  for property in "${properties[@]}"; do
+    for style in "${PS1_STYLES[@]}"; do
+      __ps1_style_${style}_${property} 2>/dev/null && return
+    done
+  done
+}
+
+__ps1_status() {
+  PS1_LAST_ERR="$?"
+  local newline=0; if [[ "$1" == '-n' ]]; then newline=1; shift; fi
+  local modules=("${PS1_MODULES[@]}"); [[ "$1" ]] && modules=("$@")
+  local status_items=0
+  for module in "${modules[@]}"; do
+    local module_out="$(__ps1_module_${module}_output)"
+    [[ "$module_out" == '' ]] && continue
+    (( status_items++ )) && __ps1_ansi $(__ps1_style block_pad)
+    __ps1_ansi \
+      :fg $(__ps1_module_${module}_color) \
+      $(__ps1_style block_start) \
+      $(__ps1_module_${module}_prefix) \
+      "$module_out" \
+      $(__ps1_module_${module}_postfix) \
+      $(__ps1_style block_end) \
+      :reset
+  done
+  if [[ "$status_items" > 0 && "$newline" == 1 ]]; then
+    __ps1_ansi :eol
+  fi
+  return $PS1_LAST_ERR
+}
+
+for var in $(typeset | grep -v ORIG | grep -E ^PS1_.*= | cut -d '=' -f 1); do
+  unset $var
+done
+
+# Process --key=val args into --key val, un-bundle single-letter flags,
+# and treat -- as the end of explicit options
+ar=(); for (( i=1; i<=$#; i++ )); do a="${@:$i:1}"
+  [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
+  [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
+  [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
+  ar+=( $( for (( x=1; x<${#a}; x++ )); do echo "-${a:$x:1}"; done ) )
+done; set -- "${ar[@]}"; unset a; unset ar
+
+PS1_MODULES=()
+PS1_STYLES=('user' 'default')
+PS1_ROOT="$(cd "$(dirname ${BASH_SOURCE[0]})" &>/dev/null && pwd)"
+PS1_SCRIPT="$(echo -n "$PS1_ROOT"'/'; basename "${BASH_SOURCE[0]}")"
+user_styles=()
+while (( "$#" > 0 )); do
+  arg="$1"
+  shift
+  case "$arg" in
+    -m|--module)       PS1_MODULES+=("$1"); shift ;;
+    -a|--all-modules)  all_modules=1 ;;
+    -s|--style)        PS1_STYLES=("$1" "${PS1_STYLES[@]}"); shift ;;
+    -u|--user-style)   user_styles+=("$1"); shift ;;
+    -p|--prompt)       set_prompt=($1); shift ;;
+    -d|--debug)        PS1_DEBUG=1 ;;
+    -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
+    -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
+    -h|--help)         show_help=1 ;;
+  esac
+done
+
+
+if [[ "$show_help" ]]; then
+  cat <<EOF
+USAGE: source $(basename ${BASH_SOURCE[0]}) [options]
+
+Sets the prompt in a bash session
+
+Options:
+
+         --module NAME :  Enable module NAME
+               -m NAME    Modules can be found in:
+                            $PS1_ROOT/module
+ 
+         --all-modules :  Enable all modules
+                    -a
+ 
+          --style NAME :  Enable style NAME
+               -s NAME    Styles can be found in:
+                            $PS1_ROOT/style
+ 
+                --help :  Shows help
+                    -h
+ 
+               --debug :  Enable debugging information
+                    -d
+ 
+ --title-format FORMAT :  Format for status line / window title using bash
+             -f FORMAT    PS1 syntax
+ 
+     --title-mode MODE :  Sets how status line / window title is handled
+               -t MODE    Custom titles can be set with the 'title' command
+                          
+                          MODE is one of:
+                            prepend      Add custom-set title as the
+                                           begining (default)
+                            append       Add custom-set title at the end
+                            static       No custom-set title
+                            interpolate  Interpolate escape \\z with
+                                           title-format as custom-set title
+                            disabled     No title set in prompt
+
+For more information and additonal usage: https://github.com/kilna/prompt
+
+EOF
+  [[ "${BASH_SOURCE[0]}" == "$0" ]] && exit 0 || return 0
+fi
+unset show_help
+
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  cat <<EOF >&2
+This script is meant to be added into a Bash shell session via:
+
+source $(basename ${BASH_SOURCE[0]})
+
+After loading, you can use 'prompt' to reload.
+EOF
+  exit 1
+fi
+
+__ps1_debug "PS1_ROOT: $PS1_ROOT"
+__ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
+
+if [[ "$all_modules" ]]; then
+  PS1_MODULES=()
+  for module_path in $PS1_ROOT/module/*.sh; do
+    PS1_MODULES+=("$(basename -s .sh $module_path)")
+  done
+fi
+unset all_modules
+
+for func in $(typeset -F | grep -v debug | cut -d ' ' -f 3 | grep -E '^__ps1_(style|module)_'); do
+  __ps1_debug "Unsetting $func"
+  unset -f $func
+done
+
+for user_style in "${user_styles[@]}"; do
+  str="__ps1_style_user_${user_style%%=*}() { echo -n ${user_style#*=}; }"
+  __ps1_debug "$str"
+  eval "$str"
+done
+unset user_styles
+
+err=0
+
+for module in "${PS1_MODULES[@]}"; do
+  __ps1_debug "PS1_MODULE: $module"
+  if ! source ${PS1_ROOT}/module/${module}.sh; then
+    echo "Unable to open $0 module ${PS1_ROOT}/modules/${module}.sh" >&2
+    (( err++ ))
+  fi
+done
+
+for style in "${PS1_STYLES[@]}"; do
+  [[ "$style" == 'user' ]] && continue
+  __ps1_debug "PS1_STYLE: $style"
+  if ! source ${PS1_ROOT}/style/${style}.sh; then
+    echo "Unable to open $0 style ${PS1_ROOT}/style/${style}.sh" >&2
+    (( err++ ))
+  fi
+done
+
+PS1_TITLE_MODE="${PS1_TITLE_MODE:-prepend}"
+__ps1_debug "PS1_TITLE_MODE: $PS1_TITLE_MODE"
+
+PS1_TITLE_FORMAT="${PS1_TITLE_FORMAT:-\\u@\\h \\w}"
+__ps1_debug "PS1_TITLE_FORMAT: $PS1_TITLE_FORMAT"
+
+
+if [[ "${#set_prompt[@]}" -eq 0 ]]; then
+  set_prompt=(:statusline :user :reset '@' :host ' ' :dir :eol :prompt ' ' :reset)
+fi
+
+if [[ "$PS1_ORIG" == '' ]]; then PS1_ORIG="$PS1"; fi
+__ps1_debug "PS1_ORIG: $PS1_ORIG"
+
+export PS1="$(__ps1_prompt_title)$(__ps1_prompt "${set_prompt[@]}")"
+(( err+="$?" ))
+__ps1_debug "PS1: $PS1"
+unset set_prompt
+
+return $(err_copy=$err; unset err; echo $err_copy)
+
