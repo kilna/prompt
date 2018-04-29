@@ -7,10 +7,6 @@ __ps1_module_git_output() {
   git branch 2>/dev/null | grep -F '* ' | cut -c 2-
 }
 
-__ps1_module_git_color() {
-  echo -n blue
-}
-
 __ps1_module_git_prefix() { 
   if __ps1_unicode; then
     echo -n "$(printf '\u2325')" :space
@@ -19,7 +15,7 @@ __ps1_module_git_prefix() {
   fi
 }
 
-__ps1_module_git_postfix() {
-  echo -n
+__ps1_style_default_git() {
+  echo -n :fg blue
 }
 

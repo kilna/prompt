@@ -1,0 +1,6 @@
+#!/bin/bash
+
+__ps1_style_bracket_module()     { echo -n '[ '; }
+__ps1_style_bracket_module_end() { echo -n ' ]'; }
+__ps1_style_bracket_module_pad() { echo -n ' '; }
+

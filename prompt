@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ ! "$BASH" ]; then
+  echo "Script is only compatible with bash, current shell is $SHELL" >&2
+  exit 1
+fi
+
 title() {
   export PS1_TITLE="$1"
 }
@@ -83,10 +88,34 @@ __ps1_ansi_echo() {
   esac
 }
 
+__ps1_style() {
+  properties=("$@" 'default')
+  [[ "$PS1_BOLD" ]] && echo -n '+bold ';
+  for property in "${properties[@]}"; do
+    for style in "${PS1_STYLES[@]}"; do
+      __ps1_style_${style}_${property} 2>/dev/null && return
+    done
+  done
+}
+
+__ps1_unstyle() {
+  properties=("$@" 'default')
+  for property in "${properties[@]}"; do
+    for style in "${PS1_STYLES[@]}"; do
+      __ps1_style_${style}_${property}_end 2>/dev/null && return
+    done
+  done
+}
+
 __ps1_stylize() {
   content="$1"
   shift
-  __ps1_ansi $(__ps1_style "$@") "$content"
+  __ps1_debug "content: $content"
+  for style in "$@"; do __ps1_debug "style: $style"; done
+  __ps1_ansi \
+    $(__ps1_style "$@") \
+    "$content" \
+    $(__ps1_unstyle "$@")
 }
 
 __ps1_ansi() {
@@ -110,7 +139,12 @@ __ps1_ansi() {
 __ps1_prompt_stylize() {
   content="$1"
   shift
-  __ps1_prompt $(__ps1_style "$@") "$content" 
+  __ps1_debug "content: $content"
+  for style in "$@"; do __ps1_debug "style: $style"; done
+  __ps1_prompt \
+    $(__ps1_style "$@") \
+    "$content" \
+    $(__ps1_unstyle "$@")
 }
 
 __ps1_title() {
@@ -122,7 +156,7 @@ __ps1_title() {
       interpolate) echo -n "$PS1_TITLE";;
     esac
   fi
-  return $last_err # Needed by __ps1_status to show error
+  return $last_err # Needed by __ps1_modules to show error
 }
 
 __ps1_prompt_title() {
@@ -154,10 +188,10 @@ __ps1_prompt() {
       :host)          __ps1_prompt_stylize '\h' host;;
       :fqdn)          __ps1_prompt_stylize '\H' fqdn host;;
       :prompt)        __ps1_prompt_stylize '\$' prompt;;
-      :date)          __ps1_prompt_stylize '\d' date time;;
-      :time|:time-24) __ps1_prompt_stylize '\t' time date;;
-      :time-12)       __ps1_prompt_stylize '\T' time date;;
-      :time-ampm)     __ps1_prompt_stylize '\@' time date;;
+      :date)          __ps1_prompt_stylize '\d' date;;
+      :time|:time-24) __ps1_prompt_stylize '\t' time-24 time;;
+      :time-12)       __ps1_prompt_stylize '\T' time-12 time;;
+      :time-ampm)     __ps1_prompt_stylize '\@' time-ampm time;;
       :escape)        echo -n '\e';;
       :jobs)          echo -n '\j';;
       :device)        echo -n '\l';;
@@ -170,45 +204,40 @@ __ps1_prompt() {
       :prompt)        echo -n '\$';;
       :backslash)     echo -n '\\';;
       :style)         __ps1_prompt $(__ps1_style "$1");;
-      :status)        echo -n '`__ps1_status`';;
-      :statusline)    echo -n '`__ps1_status -n`';;
+      :modules)       echo -n '`__ps1_modules`';;
+      :modulesline)   echo -n '`__ps1_modules -n`';;
       +*|-*)          echo -n '\['; __ps1_mode "$arg"; echo -n '\]';;
       *)              echo -n "$arg";;
     esac
   done
 }
 
-__ps1_style() {
-  properties=("$@" 'default')
-  for property in "${properties[@]}"; do
-    for style in "${PS1_STYLES[@]}"; do
-      __ps1_style_${style}_${property} 2>/dev/null && return
-    done
-  done
-}
 
-__ps1_status() {
+__ps1_modules() {
   PS1_LAST_ERR="$?"
   local newline=0; if [[ "$1" == '-n' ]]; then newline=1; shift; fi
   local modules=("${PS1_MODULES[@]}"); [[ "$1" ]] && modules=("$@")
-  local status_items=0
+  local enabled_modules=0
   for module in "${modules[@]}"; do
     local module_out="$(__ps1_module_${module}_output)"
     [[ "$module_out" == '' ]] && continue
-    (( status_items++ )) && __ps1_ansi $(__ps1_style block_pad)
+    (( enabled_modules++ )) && __ps1_ansi $(__ps1_style module_pad)
     __ps1_ansi \
-      :fg $(__ps1_module_${module}_color) \
-      $(__ps1_style block_start) \
-      $(__ps1_module_${module}_prefix) \
+      $(__ps1_style ${module}) \
+      $(__ps1_style module) \
+      $(__ps1_module_${module}_prefix 2>/dev/null) \
       "$module_out" \
-      $(__ps1_module_${module}_postfix) \
-      $(__ps1_style block_end) \
+      $(__ps1_module_${module}_postfix 2>/dev/null) \
+      $(__ps1_unstyle module) \
+      $(__ps1_unstyle ${module}) \
       :reset
   done
-  if [[ "$status_items" > 0 && "$newline" == 1 ]]; then
+  if [[ "$enabled_modules" > 0 && "$newline" == 1 ]]; then
     __ps1_ansi :eol
   fi
-  return $PS1_LAST_ERR
+  local err="$PS1_LAST_ERR"
+  unset PS1_LAST_ERR
+  return $err
 }
 
 for var in $(typeset | grep -v ORIG | grep -E ^PS1_.*= | cut -d '=' -f 1); do
@@ -235,6 +264,7 @@ while (( "$#" > 0 )); do
   case "$arg" in
     -m|--module)       PS1_MODULES+=("$1"); shift ;;
     -a|--all-modules)  all_modules=1 ;;
+    -b|--bold)         PS1_BOLD=1 ;;
     -s|--style)        PS1_STYLES=("$1" "${PS1_STYLES[@]}"); shift ;;
     -u|--user-style)   user_styles+=("$1"); shift ;;
     -p|--prompt)       set_prompt=($1); shift ;;
@@ -257,33 +287,37 @@ Options:
          --module NAME :  Enable module NAME
                -m NAME    Modules can be found in:
                             $PS1_ROOT/module
- 
+
          --all-modules :  Enable all modules
                     -a
- 
+
           --style NAME :  Enable style NAME
                -s NAME    Styles can be found in:
                             $PS1_ROOT/style
- 
+
                 --help :  Shows help
                     -h
- 
+
                --debug :  Enable debugging information
                     -d
- 
+
  --title-format FORMAT :  Format for status line / window title using bash
              -f FORMAT    PS1 syntax
  
      --title-mode MODE :  Sets how status line / window title is handled
                -t MODE    Custom titles can be set with the 'title' command
-                          
+
                           MODE is one of:
                             prepend      Add custom-set title as the
                                            begining (default)
+
                             append       Add custom-set title at the end
+
                             static       No custom-set title
-                            interpolate  Interpolate escape \\z with
-                                           title-format as custom-set title
+
+                            interpolate  Interpolate escape \\z in
+                                           title-format as custom set title
+
                             disabled     No title set in prompt
 
 For more information and additonal usage: https://github.com/kilna/prompt
@@ -310,8 +344,8 @@ __ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
 
 if [[ "$all_modules" ]]; then
   PS1_MODULES=()
-  for module_path in $PS1_ROOT/module/*.sh; do
-    PS1_MODULES+=("$(basename -s .sh $module_path)")
+  for module_path in $PS1_ROOT/module/*; do
+    PS1_MODULES+=("$(basename $module_path)")
   done
 fi
 unset all_modules
@@ -332,8 +366,8 @@ err=0
 
 for module in "${PS1_MODULES[@]}"; do
   __ps1_debug "PS1_MODULE: $module"
-  if ! source ${PS1_ROOT}/module/${module}.sh; then
-    echo "Unable to open $0 module ${PS1_ROOT}/modules/${module}.sh" >&2
+  if ! source ${PS1_ROOT}/module/${module}; then
+    echo "Unable to open $0 module ${PS1_ROOT}/modules/${module}" >&2
     (( err++ ))
   fi
 done
@@ -341,8 +375,8 @@ done
 for style in "${PS1_STYLES[@]}"; do
   [[ "$style" == 'user' ]] && continue
   __ps1_debug "PS1_STYLE: $style"
-  if ! source ${PS1_ROOT}/style/${style}.sh; then
-    echo "Unable to open $0 style ${PS1_ROOT}/style/${style}.sh" >&2
+  if ! source ${PS1_ROOT}/style/${style}; then
+    echo "Unable to open $0 style ${PS1_ROOT}/style/${style}" >&2
     (( err++ ))
   fi
 done
@@ -355,7 +389,7 @@ __ps1_debug "PS1_TITLE_FORMAT: $PS1_TITLE_FORMAT"
 
 
 if [[ "${#set_prompt[@]}" -eq 0 ]]; then
-  set_prompt=(:statusline :user :reset '@' :host ' ' :dir :eol :prompt ' ' :reset)
+  set_prompt=(:modulesline :user :reset '@' :host ' ' :dir :eol :prompt ' ' :reset)
 fi
 
 if [[ "$PS1_ORIG" == '' ]]; then PS1_ORIG="$PS1"; fi
