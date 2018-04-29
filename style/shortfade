@@ -1,0 +1,22 @@
+#!/bin/bash
+
+__ps1_style_shortfade_module() {
+  if __ps1_unicode; then
+    echo -n "$(printf '\u2592')" +reverse :space
+  else
+    echo -n +reverse :space
+  fi
+}
+
+__ps1_style_shortfade_module_end() {
+  if __ps1_unicode; then
+    echo -n :space "$(printf '\u2592')"
+  else
+    echo -n :space
+  fi
+}
+
+__ps1_style_shortfade_module_pad() {
+  echo -n :space
+}
+

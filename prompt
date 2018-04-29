@@ -110,8 +110,8 @@ __ps1_unstyle() {
 __ps1_stylize() {
   content="$1"
   shift
-  __ps1_debug "content: $content"
-  for style in "$@"; do __ps1_debug "style: $style"; done
+  #__ps1_debug "content: $content"
+  #for style in "$@"; do __ps1_debug "style: $style"; done
   __ps1_ansi \
     $(__ps1_style "$@") \
     "$content" \
@@ -139,8 +139,8 @@ __ps1_ansi() {
 __ps1_prompt_stylize() {
   content="$1"
   shift
-  __ps1_debug "content: $content"
-  for style in "$@"; do __ps1_debug "style: $style"; done
+  #__ps1_debug "content: $content"
+  #for style in "$@"; do __ps1_debug "style: $style"; done
   __ps1_prompt \
     $(__ps1_style "$@") \
     "$content" \
@@ -232,8 +232,12 @@ __ps1_modules() {
       $(__ps1_unstyle ${module}) \
       :reset
   done
-  if [[ "$enabled_modules" > 0 && "$newline" == 1 ]]; then
-    __ps1_ansi :eol
+  if [[ "$enabled_modules" > 0 ]]; then
+    if [[ "$newline" == 1 ]]; then
+      __ps1_ansi :eol
+    else
+      __ps1_ansi $(__ps1_style module_pad)
+    fi
   fi
   local err="$PS1_LAST_ERR"
   unset PS1_LAST_ERR
@@ -277,7 +281,10 @@ done
 
 
 if [[ "$show_help" ]]; then
-  cat <<EOF
+  for p in $PAGER less more cat; do
+    which $p &>/dev/null && pager="$p" && break
+  done
+  cat <<EOF | $pager
 USAGE: source $(basename ${BASH_SOURCE[0]}) [options]
 
 Sets the prompt in a bash session
@@ -294,6 +301,9 @@ Options:
           --style NAME :  Enable style NAME
                -s NAME    Styles can be found in:
                             $PS1_ROOT/style
+
+                --bold :  Bold all styles
+                    -b    
 
                 --help :  Shows help
                     -h
@@ -323,6 +333,7 @@ Options:
 For more information and additonal usage: https://github.com/kilna/prompt
 
 EOF
+  unset pager show_help
   [[ "${BASH_SOURCE[0]}" == "$0" ]] && exit 0 || return 0
 fi
 unset show_help
