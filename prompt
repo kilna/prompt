@@ -136,17 +136,6 @@ __ps1_ansi() {
   done
 }
 
-__ps1_prompt_stylize() {
-  content="$1"
-  shift
-  #__ps1_debug "content: $content"
-  #for style in "$@"; do __ps1_debug "style: $style"; done
-  __ps1_prompt \
-    $(__ps1_style "$@") \
-    "$content" \
-    $(__ps1_unstyle "$@")
-}
-
 __ps1_title() {
   local last_err="$?" # Cache last command's error...
   if [[ "$PS1_TITLE" ]]; then
@@ -157,6 +146,17 @@ __ps1_title() {
     esac
   fi
   return $last_err # Needed by __ps1_modules to show error
+}
+
+__ps1_prompt_stylize() {
+  content="$1"
+  shift
+  #__ps1_debug "content: $content"
+  #for style in "$@"; do __ps1_debug "style: $style"; done
+  __ps1_prompt \
+    $(__ps1_style "$@") \
+    "$content" \
+    $(__ps1_unstyle "$@")
 }
 
 __ps1_prompt_title() {
@@ -319,14 +319,14 @@ Options:
 
                           MODE is one of:
                             prepend      Add custom-set title as the
-                                           begining (default)
+                                         begining (default)
 
                             append       Add custom-set title at the end
 
                             static       No custom-set title
 
                             interpolate  Interpolate escape \\z in
-                                           title-format as custom set title
+                                         title-format as custom set title
 
                             disabled     No title set in prompt
 
@@ -410,6 +410,11 @@ export PS1="$(__ps1_prompt_title)$(__ps1_prompt "${set_prompt[@]}")"
 (( err+="$?" ))
 __ps1_debug "PS1: $PS1"
 unset set_prompt
+
+for func in $(typeset -F | grep -v debug | cut -d ' ' -f 3 | grep -E '^__ps1_prompt_'); do
+  __ps1_debug "Unsetting $func"
+  unset -f $func
+done
 
 return $(err_copy=$err; unset err; echo $err_copy)
 
