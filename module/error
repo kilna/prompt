@@ -6,13 +6,13 @@ __ps1_module_error_output() {
 
 __ps1_module_error_prefix() {
   if __ps1_unicode; then
-    echo -n +blink "$(printf '\u26A0')" -blink :space
+    echo -n "{blink}$(printf '\u26A0'){/blink} "
   else
-    echo -n 'err' :space
+    echo -n 'err '
   fi
 }
 
 __ps1_style_default_error() {
-  echo -n :fg red
+  echo -n '{fg:red}'
 }
 

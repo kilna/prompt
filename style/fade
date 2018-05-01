@@ -2,21 +2,21 @@
 
 __ps1_style_fade_module() {
   if __ps1_unicode; then
-    echo -n "$(printf '\u2591\u2592\u2593')" +reverse :space
+    echo -n "$(printf '\u2591\u2592\u2593'){reverse} "
   else
-    echo -n +reverse :space
+    echo -n '{reverse} '
   fi
 }
 
 __ps1_style_fade_module_end() {
   if __ps1_unicode; then
-    echo -n :space "$(printf '\u2591\u2592\u2593')"
+    echo -n " $(printf '\u2591\u2592\u2593')"
   else
-    echo -n :space
+    echo -n ' '
   fi
 }
 
 __ps1_style_fade_module_pad() {
-  echo -n :space
+  echo -n ' '
 }
 

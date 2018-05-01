@@ -2,9 +2,9 @@
 
 __ps1_style_block_module() {
   if __ps1_unicode; then
-    echo -n +reverse "$(printf '\u258F')"
+    echo -n "{reverse}$(printf '\u258F')"
   else
-    echo -n +reverse :space
+    echo -n "{reverse} "
   fi
 }
 
@@ -12,13 +12,13 @@ __ps1_style_block_module_end() {
   if __ps1_unicode; then
     echo -n "$(printf '\u2595')"
   else
-    echo -n :space
+    echo -n ' '
   fi
 }
 
 __ps1_style_block_module_pad() {
   if ! __ps1_unicode; then
-    echo -n :space
+    echo -n ' '
   fi
 }
 

@@ -9,13 +9,13 @@ __ps1_module_git_output() {
 
 __ps1_module_git_prefix() { 
   if __ps1_unicode; then
-    echo -n "$(printf '\u2325')" :space
+    echo -n "$(printf '\u2325') "
   else
-    echo -n 'branch' :space
+    echo -n 'branch '
   fi
 }
 
 __ps1_style_default_git() {
-  echo -n :fg blue
+  echo -n '{fg:cyan}'
 }
 

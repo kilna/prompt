@@ -48,38 +48,44 @@ __ps1_unicode() {
   esac
 }
 
-__ps1_color() {
-  case "$1" in
-    :bg) prefix='4';;
-    :fg) prefix='3';;
-  esac
-  case "$2" in
-    black)   echo -n '\e['$prefix'0m';;
-    red)     echo -n '\e['$prefix'1m';;
-    green)   echo -n '\e['$prefix'2m';;
-    yellow)  echo -n '\e['$prefix'3m';;
-    blue)    echo -n '\e['$prefix'4m';;
-    magenta) echo -n '\e['$prefix'5m';;
-    cyan)    echo -n '\e['$prefix'6m';;
-    white)   echo -n '\e['$prefix'7m';;
-  esac
-}
-
-__ps1_mode() {
-  prefix=''
-  if [[ "${1:0:1}" == '-' ]]; then
-    prefix='2'
-  fi
-  case "${1:1}" in
-    bold)      echo -n '\e['$prefix'1m';;
-    dim)       echo -n '\e['$prefix'2m';;
-    italic)    echo -n '\e['$prefix'3m';;
-    underline) echo -n '\e['$prefix'4m';;
-    blink)     echo -n '\e['$prefix'5m';;
-    fastblink) echo -n '\e['$prefix'6m';;
-    reverse)   echo -n '\e['$prefix'7m';;
-    hidden)    echo -n '\e['$prefix'8m';;
-  esac
+__ps1_parse_tags() {
+  ar=()
+  for str in "$@"; do
+    while [[ "$str" != '' ]]; do
+      idx1=$( x="${str%%\{*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
+      idx2=$( x="${str%%\}*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
+      nontag_val=''
+      tag_val=''
+      if [[ "$idx1" != '' && "$idx2" != '' && (( idx2 > idx1 )) ]]; then
+        substr="${str:0:(( idx2 ))}"
+        idx1=$( x="${substr%\{*}"; [[ "$x" = "$substr" ]] || echo $(( ${#x} + 1 )) )
+        if [[ "$idx1" == '' ]]; then
+          nontag_val+="$substr"
+        else
+          if (( idx1 != 0 )); then
+            nontag_val+="${str:0:(( idx1 - 1 ))}"
+          fi
+          tag_val="${str:(( idx1 - 1 )):(( idx2 - idx1 + 1 ))}"
+        fi
+        str="${str:$idx2}"
+      else
+        nontag_val+="$str"
+        str=''
+      fi
+      ar_idx=$(( "${#ar[@]}" - 1 ))
+      if [[ "$nontag_val" != '' ]]; then
+        if [[ "$ar_idx" -lt 0 || "${ar[$ar_idx]}" == '{'*'}' ]]; then
+          ar+=("$nontag_val")
+        else
+          ar[$ar_idx]+="$nontag_val" 
+        fi
+      fi
+      if [[ "$tag_val" != '' ]]; then
+        ar+=("$tag_val")
+      fi
+    done
+  done
+  export ps1_tags_parsed=("${ar[@]}")
 }
 
 __ps1_ansi_echo() {
@@ -88,50 +94,73 @@ __ps1_ansi_echo() {
   esac
 }
 
-__ps1_style() {
-  properties=("$@" 'default')
-  [[ "$PS1_BOLD" ]] && echo -n '+bold ';
-  for property in "${properties[@]}"; do
+__ps1_ansi_style() {
+  [[ "$PS1_BOLD" ]] && __ps1_ansi '{bold}'
+  for property in "$1" 'default'; do
+    __ps1_debug "PROPERTY: '$property'"
     for style in "${PS1_STYLES[@]}"; do
-      __ps1_style_${style}_${property} 2>/dev/null && return
+      __ps1_debug "  STYLE: '$style'"
+      out="$(__ps1_style_${style}_${property} 2>/dev/null)"
+      if (( $? == 0 )); then
+        __ps1_debug " RETURN: '$out'"
+        __ps1_ansi "$out"
+        return
+      fi
+      __ps1_debug "    OUT: '$out'"
     done
   done
-}
-
-__ps1_unstyle() {
-  properties=("$@" 'default')
-  for property in "${properties[@]}"; do
-    for style in "${PS1_STYLES[@]}"; do
-      __ps1_style_${style}_${property}_end 2>/dev/null && return
-    done
-  done
-}
-
-__ps1_stylize() {
-  content="$1"
-  shift
-  #__ps1_debug "content: $content"
-  #for style in "$@"; do __ps1_debug "style: $style"; done
-  __ps1_ansi \
-    $(__ps1_style "$@") \
-    "$content" \
-    $(__ps1_unstyle "$@")
 }
 
 __ps1_ansi() {
+  export ps1_tags_parsed=()
+  __ps1_parse_tags "$@"
+  set -- "${ps1_tags_parsed[@]}"
+  for x in "$@"; do __ps1_debug "CHUNK: '$x'"; done
+  unset ps1_tags_parsed
   while (( "$#" > 0 )); do
     arg="$1"
     shift
-    case "$arg" in
-      :nl|:newline) echo;;
-      :space)  echo -n ' ';;
-      :eol)    __ps1_ansi_echo '\e[0m\n\e[0m';; # Handy when bash eats a trailing newline
-      :clear)  __ps1_ansi_echo '\e[H\e[2J';;
-      :reset)  __ps1_ansi_echo '\e[0m';;
-      :style)  __ps1_ansi_echo $(__ps1_style "$1"); shift;;
-      :fg|:bg) __ps1_ansi_echo $(__ps1_color "$arg" "$1"); shift;;
-      +*|-*)   __ps1_ansi_echo $(__ps1_mode "$arg");;
-      *)       echo -n "$arg";;
+    [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
+    tag="${arg:1:$(( ${#arg} - 2 ))}"
+    case "$tag" in
+      style:*)    __ps1_ansi_style "${tag:6}";;
+      /style:*)   __ps1_ansi_style "${tag:7}_end";;
+      eol)        __ps1_ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
+      clear)      __ps1_ansi_echo '\e[H\e[2J';;
+      reset)      __ps1_ansi_echo '\e[0m';;
+      fg:black)   __ps1_ansi_echo '\e[30m';;
+      fg:red)     __ps1_ansi_echo '\e[31m';;
+      fg:green)   __ps1_ansi_echo '\e[32m';;
+      fg:yellow)  __ps1_ansi_echo '\e[33m';;
+      fg:blue)    __ps1_ansi_echo '\e[34m';;
+      fg:magenta) __ps1_ansi_echo '\e[35m';;
+      fg:cyan)    __ps1_ansi_echo '\e[36m';;
+      fg:white)   __ps1_ansi_echo '\e[37m';;
+      bg:black)   __ps1_ansi_echo '\e[30m';;
+      bg:red)     __ps1_ansi_echo '\e[31m';;
+      bg:green)   __ps1_ansi_echo '\e[32m';;
+      bg:yellow)  __ps1_ansi_echo '\e[33m';;
+      bg:blue)    __ps1_ansi_echo '\e[34m';;
+      bg:magenta) __ps1_ansi_echo '\e[35m';;
+      bg:cyan)    __ps1_ansi_echo '\e[36m';;
+      bg:white)   __ps1_ansi_echo '\e[37m';;
+      bold)       __ps1_ansi_echo '\e[1m';;
+      dim)        __ps1_ansi_echo '\e[2m';;
+      italic)     __ps1_ansi_echo '\e[3m';;
+      underline)  __ps1_ansi_echo '\e[4m';;
+      blink)      __ps1_ansi_echo '\e[5m';;
+      fastblink)  __ps1_ansi_echo '\e[6m';;
+      reverse)    __ps1_ansi_echo '\e[7m';;
+      hidden)     __ps1_ansi_echo '\e[8m';;
+      /bold)      __ps1_ansi_echo '\e[21m';;
+      /dim)       __ps1_ansi_echo '\e[22m';;
+      /italic)    __ps1_ansi_echo '\e[23m';;
+      /underline) __ps1_ansi_echo '\e[24m';;
+      /blink)     __ps1_ansi_echo '\e[25m';;
+      /fastblink) __ps1_ansi_echo '\e[26m';;
+      /reverse)   __ps1_ansi_echo '\e[27m';;
+      /hidden)    __ps1_ansi_echo '\e[28m';;
+      *)          echo -n "{$tag}";;
     esac
   done
 }
@@ -148,17 +177,6 @@ __ps1_title() {
   return $last_err # Needed by __ps1_modules to show error
 }
 
-__ps1_prompt_stylize() {
-  content="$1"
-  shift
-  #__ps1_debug "content: $content"
-  #for style in "$@"; do __ps1_debug "style: $style"; done
-  __ps1_prompt \
-    $(__ps1_style "$@") \
-    "$content" \
-    $(__ps1_unstyle "$@")
-}
-
 __ps1_prompt_title() {
   if [[ "$PS1_TITLE_MODE" != 'disabled' ]]; then
     echo -n '\[\e]0;\]'
@@ -172,72 +190,116 @@ __ps1_prompt_title() {
   fi
 }
 
+__ps1_prompt_style() {
+  [[ "$PS1_BOLD" ]] && __ps1_prompt '{bold}';
+  for property in "$1" 'default'; do
+    for style in "${PS1_STYLES[@]}"; do
+      out="$(__ps1_style_${style}_${property} 2>/dev/null)"
+      if (( $? == 0 )); then
+        __ps1_prompt "$out"
+        return
+      fi
+    done
+  done
+}
+
 __ps1_prompt() {
+  export ps1_tags_parsed=()
+  __ps1_parse_tags "$@"
+  set -- "${ps1_tags_parsed[@]}"
+  unset ps1_tags_parsed
   while (( "$#" > 0 )); do
     arg="$1"
     shift
-    case "$arg" in
-      :nl|:newline)   echo -n '\n';;
-      :space)         echo -n ' ';;
-      :eol)           echo -n '\[\e[0m\]\n\[\e[0m\]';;
-      :reset)         echo -n '\[\e[0m\]';;
-      :fg|:bg)        echo -n '\['; __ps1_color "$arg" "$1"; shift; echo -n '\]';;
-      :user)          __ps1_prompt_stylize '\u' user;;
-      :dir)           __ps1_prompt_stylize '\w' dir;;
-      :basename)      __ps1_prompt_stylize '\W' basename dir;;
-      :host)          __ps1_prompt_stylize '\h' host;;
-      :fqdn)          __ps1_prompt_stylize '\H' fqdn host;;
-      :prompt)        __ps1_prompt_stylize '\$' prompt;;
-      :date)          __ps1_prompt_stylize '\d' date;;
-      :time|:time-24) __ps1_prompt_stylize '\t' time-24 time;;
-      :time-12)       __ps1_prompt_stylize '\T' time-12 time;;
-      :time-ampm)     __ps1_prompt_stylize '\@' time-ampm time;;
-      :escape)        echo -n '\e';;
-      :jobs)          echo -n '\j';;
-      :device)        echo -n '\l';;
-      :bell)          echo -n '\a';;
-      :shell)         echo -n '\s';;
-      :version)       echo -n '\v';;
-      :version-full)  echo -n '\V';;
-      :history)       echo -n '\!';;
-      :command)       echo -n '\#';;
-      :prompt)        echo -n '\$';;
-      :backslash)     echo -n '\\';;
-      :style)         __ps1_prompt $(__ps1_style "$1");;
-      :modules)       echo -n '`__ps1_modules`';;
-      :modulesline)   echo -n '`__ps1_modules -n`';;
-      +*|-*)          echo -n '\['; __ps1_mode "$arg"; echo -n '\]';;
-      *)              echo -n "$arg";;
+    [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
+    tag="${arg:1:$(( ${#arg} - 2 ))}"
+    case "$tag" in
+      style:*)     __ps1_prompt_style "${tag:6}";;
+      /style:*)    __ps1_prompt_style "${tag:7}_end";;
+      eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
+      clear)       echo -n '\[\e[H\e[2J\]';;
+      reset)       echo -n '\[\e[0m\]';;
+      fg:black)    echo -n '\[\e[30m\]';;
+      fg:red)      echo -n '\[\e[31m\]';;
+      fg:green)    echo -n '\[\e[32m\]';;
+      fg:yellow)   echo -n '\[\e[33m\]';;
+      fg:blue)     echo -n '\[\e[34m\]';;
+      fg:magenta)  echo -n '\[\e[35m\]';;
+      fg:cyan)     echo -n '\[\e[36m\]';;
+      fg:white)    echo -n '\[\e[37m\]';;
+      bg:black)    echo -n '\[\e[30m\]';;
+      bg:red)      echo -n '\[\e[31m\]';;
+      bg:green)    echo -n '\[\e[32m\]';;
+      bg:yellow)   echo -n '\[\e[33m\]';;
+      bg:blue)     echo -n '\[\e[34m\]';;
+      bg:magenta)  echo -n '\[\e[35m\]';;
+      bg:cyan)     echo -n '\[\e[36m\]';;
+      bg:white)    echo -n '\[\e[37m\]';;
+      bold)        echo -n '\[\e[1m\]';;
+      dim)         echo -n '\[\e[2m\]';;
+      italic)      echo -n '\[\e[3m\]';;
+      underline)   echo -n '\[\e[4m\]';;
+      blink)       echo -n '\[\e[5m\]';;
+      fastblink)   echo -n '\[\e[6m\]';;
+      reverse)     echo -n '\[\e[7m\]';;
+      hidden)      echo -n '\[\e[8m\]';;
+      /bold)       echo -n '\[\e[21m\]';;
+      /dim)        echo -n '\[\e[22m\]';;
+      /italic)     echo -n '\[\e[23m\]';;
+      /underline)  echo -n '\[\e[24m\]';;
+      /blink)      echo -n '\[\e[25m\]';;
+      /fastblink)  echo -n '\[\e[26m\]';;
+      /reverse)    echo -n '\[\e[27m\]';;
+      /hidden)     echo -n '\[\e[28m\]';;
+      user)        __ps1_prompt '{style:user}\u{/style:user}';;
+      dir)         __ps1_prompt '{style:dir}\w{/style:dir}';;
+      basename)    __ps1_prompt '{style:basename}\W{/style:basename}';;
+      host)        __ps1_prompt '{style:host}\h{/style:host}';;
+      fqdn)        __ps1_prompt '{style:fqdn}\H{/style:fqdn}';;
+      prompt)      __ps1_prompt '{style:prompt}\${/style:prompt}';;
+      date)        __ps1_prompt '{style:date}\d{/style:date}';;
+      time)        __ps1_prompt '{style:time}\t{/style:time}';;
+      time12)      __ps1_prompt '{style:time12}\T{/style:time12}';;
+      ampm)        __ps1_prompt '{style:ampm}\@{/style:ampm}';;
+      module:*)    echo -n '`__ps1_module '${tag:8}'`';;
+      modules)     echo -n '`__ps1_modules`';;
+      modules:eol) echo -n '`__ps1_modules -n`';;
+      modules:pad) echo -n '`__ps1_modules -p`';;
+      *)           echo -n "{$tag}";;
     esac
   done
 }
 
+__ps1_module() {
+  local exit="$?"
+  module="$1"
+  __ps1_debug "module: $module"
+  out="$(__ps1_module_${module}_output 2>/dev/null)"
+  __ps1_debug "  out: $out"
+  [[ "$out" ]] || return $exit
+  __ps1_ansi_style "$module"
+  __ps1_ansi_style 'module'
+  echo -n "$out"
+  __ps1_ansi_style 'module_end'
+  __ps1_ansi_style "${module}_end"
+  return $exit
+}
 
 __ps1_modules() {
   PS1_LAST_ERR="$?"
   local newline=0; if [[ "$1" == '-n' ]]; then newline=1; shift; fi
-  local modules=("${PS1_MODULES[@]}"); [[ "$1" ]] && modules=("$@")
+  local pad=0;     if [[ "$1" == '-p' ]]; then pad=1;     shift; fi
   local enabled_modules=0
-  for module in "${modules[@]}"; do
-    local module_out="$(__ps1_module_${module}_output)"
-    [[ "$module_out" == '' ]] && continue
-    (( enabled_modules++ )) && __ps1_ansi $(__ps1_style module_pad)
-    __ps1_ansi \
-      $(__ps1_style ${module}) \
-      $(__ps1_style module) \
-      $(__ps1_module_${module}_prefix 2>/dev/null) \
-      "$module_out" \
-      $(__ps1_module_${module}_postfix 2>/dev/null) \
-      $(__ps1_unstyle module) \
-      $(__ps1_unstyle ${module}) \
-      :reset
+  for module in "${PS1_MODULES[@]}"; do
+    module_out="$(__ps1_module $module)"
+    [[ "$module_out" ]] || continue
+    (( enabled_modules++ )) && __ps1_ansi_style 'module_pad'
+    echo -n "$module_out"
+    __ps1_ansi '{reset}'
   done
   if [[ "$enabled_modules" > 0 ]]; then
-    if [[ "$newline" == 1 ]]; then
-      __ps1_ansi :eol
-    else
-      __ps1_ansi $(__ps1_style module_pad)
-    fi
+    if   [[ "$newline" == 1 ]]; then __ps1_ansi '{eol}'
+    elif [[ "$pad"     == 1 ]]; then __ps1_ansi_style 'module_pad'; fi
   fi
   local err="$PS1_LAST_ERR"
   unset PS1_LAST_ERR
@@ -271,7 +333,7 @@ while (( "$#" > 0 )); do
     -b|--bold)         PS1_BOLD=1 ;;
     -s|--style)        PS1_STYLES=("$1" "${PS1_STYLES[@]}"); shift ;;
     -u|--user-style)   user_styles+=("$1"); shift ;;
-    -p|--prompt)       set_prompt=($1); shift ;;
+    -p|--prompt)       set_prompt="$1"; shift ;;
     -d|--debug)        PS1_DEBUG=1 ;;
     -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
     -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
@@ -400,13 +462,14 @@ __ps1_debug "PS1_TITLE_FORMAT: $PS1_TITLE_FORMAT"
 
 
 if [[ "${#set_prompt[@]}" -eq 0 ]]; then
-  set_prompt=(:modulesline :user :reset '@' :host ' ' :dir :eol :prompt ' ' :reset)
+  set_prompt='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
 fi
 
 if [[ "$PS1_ORIG" == '' ]]; then PS1_ORIG="$PS1"; fi
 __ps1_debug "PS1_ORIG: $PS1_ORIG"
+__ps1_debug "Set prompt: $set_prompt"
 
-export PS1="$(__ps1_prompt_title)$(__ps1_prompt "${set_prompt[@]}")"
+export PS1="$(__ps1_prompt_title)$(__ps1_prompt "${set_prompt}")"
 (( err+="$?" ))
 __ps1_debug "PS1: $PS1"
 unset set_prompt
