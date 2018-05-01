@@ -1,45 +1,54 @@
 #!/bin/bash
 
-firstindex() { x="${1%%$2*}"; [[ "$x" = "$1" ]] || echo $(( ${#x} + 1 )); }
-lastindex()  { x="${1%$2*}";  [[ "$x" = "$1" ]] || echo $(( ${#x} + 1 )); }
+#firstindex() { x="${1%%$2*}"; [[ "$x" = "$1" ]] || echo $(( ${#x} + 1 )); }
+#lastindex()  { x="${1%$2*}";  [[ "$x" = "$1" ]] || echo $(( ${#x} + 1 )); }
 
 chunk() {
   str="$1"
-  #echo "$str"
   ar=()
   while [[ "$str" != '' ]]; do
-    idx1=$( firstindex "$str" '{' )
-    idx2=$( firstindex "$str" '}' )
+    
+    idx1=$( x="${str%%\{*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
+    idx2=$( x="${str%%\}*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
+
+    nontag_val=''
+    tag_val=''
+    
     if [[ "$idx1" != '' && "$idx2" != '' && (( idx2 > idx1 )) ]]; then
       substr="${str:0:(( idx2 ))}"
-      idx1=$( lastindex "$substr" '{' )
+      idx1=$( x="${substr%\{*}"; [[ "$x" = "$substr" ]] || echo $(( ${#x} + 1 )) )
       if [[ "$idx1" == '' ]]; then
-        # Non-tag chunk (no matching beginning '{')
-        ar_idx=$(( "${#ar[@]}" - 1 ))
-        echo "ar_idx: $ar_idx"
-        if [[ (( ar_idx < 0 )) ]]; then
-          ar+=("$substr")
-        elif [[ "${ar[$ar_idx]}" == '{'*'}' ]]; then
-          ar+=("$substr")
-        else
-          ar[$ar_idx]+="$substr" 
-        fi
+        nontag_val+="$substr"
       else
         if (( idx1 != 0 )); then
-          ar+=("${str:0:(( idx1 - 1 ))}") # Non-tag chunk
+          nontag_val+="${str:0:(( idx1 - 1 ))}"
         fi
-        ar+=("${str:(( idx1 - 1 )):(( idx2 - idx1 + 1 ))}") # Tag chunk
+        tag_val="${str:(( idx1 - 1 )):(( idx2 - idx1 + 1 ))}"
       fi
       str="${str:$idx2}"
     else
-      ar+=("$str") # Last non-tag chunk
+      nontag_val+="$str"
       str=''
     fi
+
+    ar_idx=$(( "${#ar[@]}" - 1 ))
+    if [[ "$nontag_val" != '' ]]; then
+      if [[ "$ar_idx" -lt 0 || "${ar[$ar_idx]}" == '{'*'}' ]]; then
+        ar+=("$nontag_val")
+      else
+        ar[$ar_idx]+="$nontag_val" 
+      fi
+    fi
+    if [[ "$tag_val" != '' ]]; then
+      ar+=("$tag_val")
+    fi
+
   done
+
   for x in "${ar[@]}"; do
     echo "$x"
   done
 }
 
-chunk "as}df{foo}as}df 'foo' bar 'baz'{bar}{{/foo}asdf{}asdf's"
+chunk "as}df{foo}as}df 'foo' bar 'baz'{bar}{{/foo}asdf{}as}df's"
 
