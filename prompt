@@ -270,6 +270,11 @@ __ps1_prompt() {
   done
 }
 
+__ps1_debug_output() {
+  __ps1_debug "$1: "$(echo "$2" | perl -p -e 's/([^A-Za-z0-9!@#\$%\^\&\*\(\)_\+=\{\}\[\]:";'\''\<\>,\.~\`\/?-])//gsm') >2&
+  echo -n "$2"
+}
+
 __ps1_module() {
   local exit="$?"
   module="$1"
@@ -277,11 +282,11 @@ __ps1_module() {
   out="$(__ps1_module_${module}_output 2>/dev/null)"
   __ps1_debug "  out: $out"
   [[ "$out" ]] || return $exit
-  __ps1_ansi_style "$module"
-  __ps1_ansi_style 'module'
+  __ps1_debug_output "__ps1_ansi_style $module" "$(__ps1_ansi_style "$module")"
+  __ps1_debug_output "__ps1_ansi_style module" "$(__ps1_ansi_style "module")"
   echo -n "$out"
-  __ps1_ansi_style 'module_end'
-  __ps1_ansi_style "${module}_end"
+  __ps1_debug_output "__ps1_ansi_style module_end" "$(__ps1_ansi_style "module_end")"
+  __ps1_debug_output "__ps1_ansi_style ${module}_end" "$(__ps1_ansi_style "${module}_end")"
   return $exit
 }
 
