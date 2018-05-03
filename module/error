@@ -1,15 +1,13 @@
 #!/bin/bash
 
-__ps1_module_error_output() {
-  (( "$PS1_LAST_ERR" )) && echo -n $PS1_LAST_ERR
-}
-
-__ps1_module_error_prefix() {
+__ps1_module_error() {
+  (( "$PS1_LAST_ERR" )) || return
   if __ps1_unicode; then
-    echo -n "{blink}$(printf '\u26A0'){/blink} "
+    __ps1_ansi "{blink}$(printf '\u26A0'){/blink} "
   else
     echo -n 'err '
   fi
+  echo -n $PS1_LAST_ERR
 }
 
 __ps1_style_default_error() {

@@ -279,14 +279,12 @@ __ps1_module() {
   local exit="$?"
   module="$1"
   __ps1_debug "module: $module"
-  out="$(__ps1_module_${module}_output 2>/dev/null)"
+  out="$(__ps1_module_${module} 2>/dev/null)"
   __ps1_debug "  out: $out"
   [[ "$out" ]] || return $exit
-  __ps1_debug_output "__ps1_ansi_style $module" "$(__ps1_ansi_style "$module")"
-  __ps1_debug_output "__ps1_ansi_style module" "$(__ps1_ansi_style "module")"
+  echo -n "$(__ps1_ansi_style $module)$(__ps1_ansi_style module)"
   echo -n "$out"
-  __ps1_debug_output "__ps1_ansi_style module_end" "$(__ps1_ansi_style "module_end")"
-  __ps1_debug_output "__ps1_ansi_style ${module}_end" "$(__ps1_ansi_style "${module}_end")"
+  echo -n "$(__ps1_ansi_style module_end)$(__ps1_ansi_style ${module}_end)"
   return $exit
 }
 
@@ -324,16 +322,17 @@ ar=(); for (( i=1; i<=$#; i++ )); do a="${@:$i:1}"
   ar+=( $( for (( x=1; x<${#a}; x++ )); do echo "-${a:$x:1}"; done ) )
 done; set -- "${ar[@]}"; unset a; unset ar
 
-PS1_MODULES=()
 PS1_STYLES=('user' 'default')
 PS1_ROOT="$(cd "$(dirname ${BASH_SOURCE[0]})" &>/dev/null && pwd)"
-PS1_SCRIPT="$(echo -n "$PS1_ROOT"'/'; basename "${BASH_SOURCE[0]}")"
+PS1_NAME="$(basename "${BASH_SOURCE[0]}")"
+PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
 user_styles=()
+load_modules=()
 while (( "$#" > 0 )); do
   arg="$1"
   shift
   case "$arg" in
-    -m|--module)       PS1_MODULES+=("$1"); shift ;;
+    -m|--module)       load_modules+=("$1"); shift ;;
     -a|--all-modules)  all_modules=1 ;;
     -b|--bold)         PS1_BOLD=1 ;;
     -s|--style)        PS1_STYLES=("$1" "${PS1_STYLES[@]}"); shift ;;
@@ -352,7 +351,7 @@ if [[ "$show_help" ]]; then
     which $p &>/dev/null && pager="$p" && break
   done
   cat <<EOF | $pager
-USAGE: source $(basename ${BASH_SOURCE[0]}) [options]
+USAGE: source $PS1_NAME [options]
 
 Sets the prompt in a bash session
 
@@ -410,7 +409,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   cat <<EOF >&2
 This script is meant to be added into a Bash shell session via:
 
-source $(basename ${BASH_SOURCE[0]})
+source $PS1_NAME
 
 After loading, you can use 'prompt' to reload.
 EOF
@@ -421,9 +420,9 @@ __ps1_debug "PS1_ROOT: $PS1_ROOT"
 __ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
 
 if [[ "$all_modules" ]]; then
-  PS1_MODULES=()
+  load_modules=()
   for module_path in $PS1_ROOT/module/*; do
-    PS1_MODULES+=("$(basename $module_path)")
+    load_modules+=("$(basename $module_path)")
   done
 fi
 unset all_modules
@@ -442,19 +441,24 @@ unset user_styles
 
 err=0
 
-for module in "${PS1_MODULES[@]}"; do
-  __ps1_debug "PS1_MODULE: $module"
-  if ! source ${PS1_ROOT}/module/${module}; then
-    echo "Unable to open $0 module ${PS1_ROOT}/modules/${module}" >&2
+PS1_MODULES=()
+for module in "${load_modules[@]}"; do
+  __ps1_debug "Loading module: $module"
+  if ! source "${PS1_ROOT}/module/${module}"; then
+    echo "Unable to open $PS1_NAME module $PS1_ROOT/modules/$module" >&2
     (( err++ ))
+  fi
+  if [[ "$(typeset -F __ps1_module_$module)" ]]; then
+    __ps1_debug "Module $module successfully"
+    PS1_MODULES+=("$module")
   fi
 done
 
 for style in "${PS1_STYLES[@]}"; do
   [[ "$style" == 'user' ]] && continue
   __ps1_debug "PS1_STYLE: $style"
-  if ! source ${PS1_ROOT}/style/${style}; then
-    echo "Unable to open $0 style ${PS1_ROOT}/style/${style}" >&2
+  if ! source "${PS1_ROOT}/style/${style}"; then
+    echo "Unable to open $PS1_NAME style $PS1_ROOT/style/$style" >&2
     (( err++ ))
   fi
 done

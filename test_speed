@@ -1,0 +1,32 @@
+#!/bin/bash
+
+value=foo
+__value() { echo -n 'foo'; }
+lookup='value'
+
+__lookup_eval() {
+  for i in {1..300}; do
+    eval "result=\$$lookup"
+    echo $result
+  done
+}
+
+__lookup_ref() {
+  for i in {1..300}; do
+    __$lookup
+  done
+}
+
+__lookup_dual() {
+  for i in {1..300}; do
+    typeset -F __$lookup >/dev/null && __$lookup
+    echo ${!lookup}
+  done
+}
+
+
+
+time $(__lookup_eval)
+time $(__lookup_ref)
+time $(__lookup_dual)
+
