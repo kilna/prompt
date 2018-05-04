@@ -3,30 +3,92 @@
 value=foo
 __value() { echo -n 'foo'; }
 lookup='value'
+lookup_wrong='asdf'
 
-__lookup_eval() {
-  for i in {1..300}; do
+__lookup_eval_assign() {
+  for i in {1..200}; do
     eval "result=\$$lookup"
-    echo $result
   done
 }
 
-__lookup_ref() {
-  for i in {1..300}; do
-    __$lookup
+__lookup_eval_func() {
+  for i in {1..200}; do
+    eval "result=\$(__$lookup)"
+  done
+}
+
+__lookup_eval_capture() {
+  for i in {1..200}; do
+    eval "result=\$$lookup"
+    x="$(echo "$result")"
+  done
+}
+
+__lookup_eval_capture_noquotes() {
+  for i in {1..200}; do
+    eval "result=\$$lookup"
+    x=$(echo "$result")
+  done
+}
+
+__lookup_func() {
+  for i in {1..200}; do
+    __$lookup >/dev/null
+  done
+}
+
+__lookup_func_capture() {
+  for i in {1..200}; do
+    x="$(__$lookup >/dev/null)"
+  done
+}
+
+__lookup_read() {
+  for i in {1..200}; do
+    __$lookup | read x
   done
 }
 
 __lookup_dual() {
-  for i in {1..300}; do
-    typeset -F __$lookup >/dev/null && __$lookup
-    echo ${!lookup}
+  for i in {1..100}; do
+    typeset -F __$lookup >/dev/null && __$lookup >/dev/null
+    echo ${!lookup} >/dev/null
+  done
+  for i in {1..100}; do
+    typeset -F __$lookup_wrong &>/dev/null && __$lookup_wrong &>/dev/null
+    echo ${!lookup} >/dev/null
   done
 }
 
-
-
-time $(__lookup_eval)
-time $(__lookup_ref)
+echo 'eval_assign'
+time $(__lookup_eval_assign)
+echo
+echo
+echo 'eval_func'
+time $(__lookup_eval_func)
+echo
+echo
+echo 'eval_capture'
+time $(__lookup_eval_capture)
+echo
+echo
+echo 'eval_capture_noquotes'
+time $(__lookup_eval_capture_noquotes)
+echo
+echo
+echo 'func'
+time $(__lookup_func)
+echo
+echo
+echo 'func_capture'
+time $(__lookup_func_capture)
+echo
+echo
+echo 'read'
+time $(__lookup_read)
+echo
+echo
+echo 'dual'
 time $(__lookup_dual)
+echo
 

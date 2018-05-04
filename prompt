@@ -37,6 +37,13 @@ noprompt() {
   done
 }
 
+__ps1_lookup() {
+  if typset -F __ps1_$1; then __ps1_$1; return $?; fi
+  if typset -F ps1_$1; then ps1_$1; return $?; fi
+  if typeset $1; then eval 'echo -n $ps1_'"$1"; return 0; fi
+  return 1
+}
+
 __ps1_debug() {
   [[ "$PS1_DEBUG" ]] && echo "$@" >&2
 }
@@ -52,13 +59,16 @@ __ps1_parse_tags() {
   ar=()
   for str in "$@"; do
     while [[ "$str" != '' ]]; do
-      idx1=$( x="${str%%\{*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
-      idx2=$( x="${str%%\}*}"; [[ "$x" = "$str" ]] || echo $(( ${#x} + 1 )) )
+      x="${str%%\{*}"
+      [[ "$x" = "$str" ]] || (( idx1 = ${#x} + 1 ))
+      x="${str%%\}*}"
+      [[ "$x" = "$str" ]] || (( idx2 = ${#x} + 1 ))
       nontag_val=''
       tag_val=''
       if [[ "$idx1" != '' && "$idx2" != '' && (( idx2 > idx1 )) ]]; then
         substr="${str:0:(( idx2 ))}"
-        idx1=$( x="${substr%\{*}"; [[ "$x" = "$substr" ]] || echo $(( ${#x} + 1 )) )
+        x="${substr%\{*}"
+        [[ "$x" = "$substr" ]] || (( idx1 = ${#x} + 1 ))
         if [[ "$idx1" == '' ]]; then
           nontag_val+="$substr"
         else
@@ -100,7 +110,7 @@ __ps1_ansi_style() {
     __ps1_debug "PROPERTY: '$property'"
     for style in "${PS1_STYLES[@]}"; do
       __ps1_debug "  STYLE: '$style'"
-      out="$(__ps1_style_${style}_${property} 2>/dev/null)"
+      local out="$(__ps1_style_${style}_${property} 2>/dev/null)"
       if (( $? == 0 )); then
         __ps1_debug " RETURN: '$out'"
         __ps1_ansi "$out"
@@ -194,7 +204,7 @@ __ps1_prompt_style() {
   [[ "$PS1_BOLD" ]] && __ps1_prompt '{bold}';
   for property in "$1" 'default'; do
     for style in "${PS1_STYLES[@]}"; do
-      out="$(__ps1_style_${style}_${property} 2>/dev/null)"
+      local out="$(__ps1_style_${style}_${property} 2>/dev/null)"
       if (( $? == 0 )); then
         __ps1_prompt "$out"
         return
@@ -279,12 +289,14 @@ __ps1_module() {
   local exit="$?"
   module="$1"
   __ps1_debug "module: $module"
-  out="$(__ps1_module_${module} 2>/dev/null)"
-  __ps1_debug "  out: $out"
+  local out="$(__ps1_module_${module} 2>/dev/null)"
+  __ps1_debug "   out: $out"
   [[ "$out" ]] || return $exit
-  echo -n "$(__ps1_ansi_style $module)$(__ps1_ansi_style module)"
+  __ps1_ansi_style $module
+  __ps1_ansi_style module
   echo -n "$out"
-  echo -n "$(__ps1_ansi_style module_end)$(__ps1_ansi_style ${module}_end)"
+  __ps1_ansi_style module_end
+  __ps1_ansi_style ${module}_end
   return $exit
 }
 
@@ -319,12 +331,14 @@ ar=(); for (( i=1; i<=$#; i++ )); do a="${@:$i:1}"
   [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
   [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
   [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
-  ar+=( $( for (( x=1; x<${#a}; x++ )); do echo "-${a:$x:1}"; done ) )
+  for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done
 done; set -- "${ar[@]}"; unset a; unset ar
 
 PS1_STYLES=('user' 'default')
-PS1_ROOT="$(cd "$(dirname ${BASH_SOURCE[0]})" &>/dev/null && pwd)"
-PS1_NAME="$(basename "${BASH_SOURCE[0]}")"
+#PS1_ROOT="$(cd "$(dirname ${BASH_SOURCE[0]})" &>/dev/null && pwd)"
+#PS1_NAME="$(basename "${BASH_SOURCE[0]}")"
+PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
+PS1_NAME="${BASH_SOURCE[0]##*/}"
 PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
 user_styles=()
 load_modules=()
@@ -422,7 +436,7 @@ __ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
 if [[ "$all_modules" ]]; then
   load_modules=()
   for module_path in $PS1_ROOT/module/*; do
-    load_modules+=("$(basename $module_path)")
+    load_modules+=("${module_path##*/}")
   done
 fi
 unset all_modules
@@ -488,5 +502,5 @@ for func in $(typeset -F | grep -v debug | cut -d ' ' -f 3 | grep -E '^__ps1_pro
   unset -f $func
 done
 
-return $(err_copy=$err; unset err; echo $err_copy)
+return $err
 

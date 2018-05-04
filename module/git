@@ -3,7 +3,7 @@
 which git &>/dev/null || return 0
 
 __ps1_module_git() {
-  out="$(set -o pipefail; git branch 2>/dev/null | grep -F '* ' | cut -c 3-)"
+  local out="$(set -o pipefail; git branch 2>/dev/null | grep -F '* ' | cut -c 3-)"
   [[ "$out" ]] || return
   if __ps1_unicode; then
     echo -n "$(printf '\u2325') "
