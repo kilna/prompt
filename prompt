@@ -27,21 +27,55 @@ prompt() {
 noprompt() {
   export PS1="$PS1_ORIG"
   local debug="$PS1_DEBUG"
-  for var in $(typeset | grep -E ^PS1_.*= | cut -d '=' -f 1); do
-    [[ "$debug" ]] && echo "Unsetting $var" >&2
-    unset $var &>/dev/null
+  __ps1_vars
+  for var in "${PS1_VARS[@]}"; do
+    if [[ "$var" != 'PS1_VARS' ]]; then
+      [[ "$debug" ]] && echo "Unsetting $var" >&2
+      unset $var &>/dev/null
+    fi
   done
-  for func in $(typeset -F | cut -d ' ' -f 3 | grep -E '^__ps1_') title notitle prompt noprompt; do
+  unset PS1_VARS
+  __ps1_funcs
+  for func in "${PS1_FUNCS[@]}" title notitle prompt noprompt; do
     [[ "$debug" ]] && echo "Unsetting $func" >&2
     unset -f $func &>/dev/null
   done
+  unset PS1_FUNCS
 }
 
 __ps1_lookup() {
-  if typset -F __ps1_$1; then __ps1_$1; return $?; fi
-  if typset -F ps1_$1; then ps1_$1; return $?; fi
-  if typeset $1; then eval 'echo -n $ps1_'"$1"; return 0; fi
+  if typset -F __ps1_$1; then
+    __ps1_$1
+    return $?
+  fi
+  if typset -F ps1_$1; then
+    ps1_$1
+    return $?
+  fi
+  if typeset $1; then
+    eval 'echo -n $ps1_'"$1"
+    return 0
+  fi
   return 1
+}
+
+__ps1_funcs() {
+  export PS1_FUNCS=()
+  while read line; do
+    local f=($line)
+    [[ "${f[2]}" == '__ps1_'* ]] && PS1_FUNCS+=("${f[2]}")
+  done < <(typeset -F)
+}
+
+__ps1_vars() {
+  export PS1_VARS=()
+  while read line; do
+    local f=($line)
+    if [[ "${f[0]}" == 'declare' ]]; then
+      var="${f[2]%%=*}"
+      [[ "$var" == 'PS1_'* ]] && PS1_VARS+=("$var")
+    fi
+  done < <(typeset -p)
 }
 
 __ps1_debug() {
@@ -53,6 +87,32 @@ __ps1_unicode() {
     *'UTF-8'*) return 0;;
     *)         return 1;;
   esac
+}
+
+__ps1_load_style() {
+  local file="$1"
+  local is_unicode=0
+  local code=''
+  while read line; do
+    [[ "$line" == '#'* || "$line" =~ ^[[:space:]]*$ ]] && continue
+    if [[ "$line" != *':'* ]]; then
+      echo "Unable to parse line '$line' in file '$file'" >&2
+      continue
+    else
+      name="${line%%=*}"
+      name="${name## }"
+      name="${name%% }"
+      val="${line#*=}"
+      val="${val## }"
+      val="${val%% }"
+      [[ "$val" == *'{u:'* ]] && is_unicode=1
+      code+="export PS1_SYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+    fi
+  done < "$1"
+  if [[ ! __ps1_unicode && is_unicode ]] then
+    echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
+  fi
+  eval "$code"
 }
 
 __ps1_parse_tags() {
@@ -107,16 +167,13 @@ __ps1_ansi_echo() {
 __ps1_ansi_style() {
   [[ "$PS1_BOLD" ]] && __ps1_ansi '{bold}'
   for property in "$1" 'default'; do
-    __ps1_debug "PROPERTY: '$property'"
     for style in "${PS1_STYLES[@]}"; do
-      __ps1_debug "  STYLE: '$style'"
-      local out="$(__ps1_style_${style}_${property} 2>/dev/null)"
-      if (( $? == 0 )); then
-        __ps1_debug " RETURN: '$out'"
+      local out
+      IFS='' read -r out < <(__ps1_style_${style}_${property} 2>/dev/null)
+      if [[ "$out" != '' ]]; then
         __ps1_ansi "$out"
         return
       fi
-      __ps1_debug "    OUT: '$out'"
     done
   done
 }
@@ -125,7 +182,9 @@ __ps1_ansi() {
   export ps1_tags_parsed=()
   __ps1_parse_tags "$@"
   set -- "${ps1_tags_parsed[@]}"
-  for x in "$@"; do __ps1_debug "CHUNK: '$x'"; done
+  for x in "$@"; do
+    __ps1_debug "CHUNK: '$x'"
+  done
   unset ps1_tags_parsed
   while (( "$#" > 0 )); do
     arg="$1"
@@ -170,6 +229,7 @@ __ps1_ansi() {
       /fastblink) __ps1_ansi_echo '\e[26m';;
       /reverse)   __ps1_ansi_echo '\e[27m';;
       /hidden)    __ps1_ansi_echo '\e[28m';;
+      space)      echo -n ' ';;
       *)          echo -n "{$tag}";;
     esac
   done
@@ -201,11 +261,12 @@ __ps1_prompt_title() {
 }
 
 __ps1_prompt_style() {
-  [[ "$PS1_BOLD" ]] && __ps1_prompt '{bold}';
+  [[ "$PS1_BOLD" ]] && __ps1_prompt '{bold}'
   for property in "$1" 'default'; do
     for style in "${PS1_STYLES[@]}"; do
-      local out="$(__ps1_style_${style}_${property} 2>/dev/null)"
-      if (( $? == 0 )); then
+      local out
+      IFS='' read -r out < <(__ps1_style_${style}_${property} 2>/dev/null)
+      if [[ "$out" != '' ]]; then
         __ps1_prompt "$out"
         return
       fi
@@ -280,16 +341,13 @@ __ps1_prompt() {
   done
 }
 
-__ps1_debug_output() {
-  __ps1_debug "$1: "$(echo "$2" | perl -p -e 's/([^A-Za-z0-9!@#\$%\^\&\*\(\)_\+=\{\}\[\]:";'\''\<\>,\.~\`\/?-])//gsm') >2&
-  echo -n "$2"
-}
-
 __ps1_module() {
   local exit="$?"
   module="$1"
   __ps1_debug "module: $module"
-  local out="$(__ps1_module_${module} 2>/dev/null)"
+  #local out="$(__ps1_module_${module} 2>/dev/null)"
+  local out
+  IFS='' read -r out < <(__ps1_module_${module} 2>/dev/null)
   __ps1_debug "   out: $out"
   [[ "$out" ]] || return $exit
   __ps1_ansi_style $module
@@ -302,41 +360,58 @@ __ps1_module() {
 
 __ps1_modules() {
   PS1_LAST_ERR="$?"
-  local newline=0; if [[ "$1" == '-n' ]]; then newline=1; shift; fi
-  local pad=0;     if [[ "$1" == '-p' ]]; then pad=1;     shift; fi
+  local newline=0
+  if [[ "$1" == '-n' ]]; then
+    newline=1
+    shift
+  fi
+  local pad=0
+  if [[ "$1" == '-p' ]]; then
+    pad=1
+    shift
+  fi
   local enabled_modules=0
   for module in "${PS1_MODULES[@]}"; do
-    module_out="$(__ps1_module $module)"
+    # local module_out="$(__ps1_module $module)"
+    local module_out
+    IFS='' read -r module_out < <(__ps1_module $module)
     [[ "$module_out" ]] || continue
     (( enabled_modules++ )) && __ps1_ansi_style 'module_pad'
     echo -n "$module_out"
     __ps1_ansi '{reset}'
   done
   if [[ "$enabled_modules" > 0 ]]; then
-    if   [[ "$newline" == 1 ]]; then __ps1_ansi '{eol}'
-    elif [[ "$pad"     == 1 ]]; then __ps1_ansi_style 'module_pad'; fi
+    if [[ "$newline" == 1 ]]; then
+      __ps1_ansi '{eol}'
+    elif [[ "$pad"     == 1 ]]; then
+      __ps1_ansi_style 'module_pad'
+    fi
   fi
   local err="$PS1_LAST_ERR"
   unset PS1_LAST_ERR
   return $err
 }
 
-for var in $(typeset | grep -v ORIG | grep -E ^PS1_.*= | cut -d '=' -f 1); do
-  unset $var
+__ps1_vars
+for var in "${PS1_VARS[@]}"; do
+  [[ "$var" != 'PS1_ORIG' && "$var" != 'PS1_VARS' ]] && unset $var
 done
+unset PS1_VARS
 
 # Process --key=val args into --key val, un-bundle single-letter flags,
 # and treat -- as the end of explicit options
-ar=(); for (( i=1; i<=$#; i++ )); do a="${@:$i:1}"
+ar=()
+for (( i=1; i<=$#; i++ )); do
+  a="${@:$i:1}"
   [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
   [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
   [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
   for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done
-done; set -- "${ar[@]}"; unset a; unset ar
+done
+set -- "${ar[@]}"
+unset a ar
 
 PS1_STYLES=('user' 'default')
-#PS1_ROOT="$(cd "$(dirname ${BASH_SOURCE[0]})" &>/dev/null && pwd)"
-#PS1_NAME="$(basename "${BASH_SOURCE[0]}")"
 PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
 PS1_NAME="${BASH_SOURCE[0]##*/}"
 PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
@@ -358,7 +433,6 @@ while (( "$#" > 0 )); do
     -h|--help)         show_help=1 ;;
   esac
 done
-
 
 if [[ "$show_help" ]]; then
   for p in $PAGER less more cat; do
@@ -431,6 +505,7 @@ EOF
 fi
 
 __ps1_debug "PS1_ROOT: $PS1_ROOT"
+__ps1_debug "PS1_NAME: $PS1_NAME"
 __ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
 
 if [[ "$all_modules" ]]; then
@@ -441,13 +516,17 @@ if [[ "$all_modules" ]]; then
 fi
 unset all_modules
 
-for func in $(typeset -F | grep -v debug | cut -d ' ' -f 3 | grep -E '^__ps1_(style|module)_'); do
-  __ps1_debug "Unsetting $func"
-  unset -f $func
+__ps1_funcs
+for func in "${PS1_FUNCS[@]}"; do
+  if [[ "$func" == '__ps1_module_'* || "$func" == '__ps1_style_'* ]]; then
+    __ps1_debug "Unsetting $func"
+    unset -f $func
+  fi
 done
+unset PS1_FUNCS
 
 for user_style in "${user_styles[@]}"; do
-  str="__ps1_style_user_${user_style%%=*}() { echo -n ${user_style#*=}; }"
+  str="__ps1_style_user_${user_style%%=*}() { echo -n '${user_style#*=}'; }"
   __ps1_debug "$str"
   eval "$str"
 done
@@ -462,11 +541,12 @@ for module in "${load_modules[@]}"; do
     echo "Unable to open $PS1_NAME module $PS1_ROOT/modules/$module" >&2
     (( err++ ))
   fi
-  if [[ "$(typeset -F __ps1_module_$module)" ]]; then
-    __ps1_debug "Module $module successfully"
+  if typeset -F __ps1_module_$module &>/dev/null; then
+    __ps1_debug "Module $module loaded successfully"
     PS1_MODULES+=("$module")
   fi
 done
+
 
 for style in "${PS1_STYLES[@]}"; do
   [[ "$style" == 'user' ]] && continue
@@ -492,15 +572,21 @@ if [[ "$PS1_ORIG" == '' ]]; then PS1_ORIG="$PS1"; fi
 __ps1_debug "PS1_ORIG: $PS1_ORIG"
 __ps1_debug "Set prompt: $set_prompt"
 
-export PS1="$(__ps1_prompt_title)$(__ps1_prompt "${set_prompt}")"
+IFS='' read -r -d $'\0' title < <(__ps1_prompt_title)
+IFS='' read -r -d $'\0' prompt < <(__ps1_prompt "$set_prompt")
+export PS1="$title$prompt"
 (( err+="$?" ))
 __ps1_debug "PS1: $PS1"
 unset set_prompt
 
-for func in $(typeset -F | grep -v debug | cut -d ' ' -f 3 | grep -E '^__ps1_prompt_'); do
-  __ps1_debug "Unsetting $func"
-  unset -f $func
+__ps1_funcs
+for func in "${PS1_FUNCS[@]}"; do
+  if [[ "$func" == '__ps1_prompt_'* ]]; then
+    [[ "$debug" ]] && echo "Unsetting $func" >&2
+    unset -f $func &>/dev/null
+  fi
 done
+unset PS1_FUNCS
 
 return $err
 

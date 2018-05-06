@@ -2,7 +2,7 @@
 
 Goals:
 
-* Pure Bash with no external dependencies
+* Pure Bash with no external dependencies and minimal subshelling
 * Extensible
 * Fast enough to not be painful in Git Bash for Windows
 * Pretty
