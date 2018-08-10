@@ -2,10 +2,10 @@
 
 __ps1_style_default_default()     { echo -n; }
 __ps1_style_default_default_end() { echo -n; }
-__ps1_style_default_user()        { echo -n '{fg:cyan}'; }
-__ps1_style_default_host()        { echo -n '{fg:magenta}'; }
-__ps1_style_default_dir()         { echo -n '{fg:green}'; }
-__ps1_style_default_time()        { echo -n '{fg:magenta}'; }
+__ps1_style_default_user()        { echo -n '{fg:#FFAAAA}'; }
+__ps1_style_default_host()        { echo -n '{fg:#FF0}'; }
+__ps1_style_default_dir()         { echo -n '{fg:99}'; }
+__ps1_style_default_time()        { echo -n '{fg:46}'; }
 __ps1_style_default_date()        { echo -n '{fg:magenta}'; }
 __ps1_style_default_module()      { echo -n '{reverse} '; }
 __ps1_style_default_module_end()  { echo -n ' '; }

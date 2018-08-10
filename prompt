@@ -109,7 +109,7 @@ __ps1_load_style() {
       code+="export PS1_SYLE_${name^^}='${val//\'/\\\'}'"$'\n';
     fi
   done < "$1"
-  if [[ ! __ps1_unicode && is_unicode ]] then
+  if [[ ! __ps1_unicode && is_unicode ]]; then
     echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
   fi
   eval "$code"
@@ -178,6 +178,59 @@ __ps1_ansi_style() {
   done
 }
 
+__ps1_rgb() {
+  local r="$1"
+  local g="$2"
+  local b="$3"
+  echo -n "5;$((
+    16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
+      ( ( $b + 26 ) / 51 )
+  ))m"
+}
+
+PS1_EXTGLOB=$(shopt -p extglob)
+shopt -s extglob
+__ps1_color() {
+  # If we're foreground $g is set to 3, if background it's set to 4
+  local g='3'; if [[ "${1:0:2}" == 'bg' ]]; then g='4'; fi
+  local spec="${1:3}"
+  __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
+  trap "$(shopt -p extglob)" RETURN
+  shopt -s extglob
+  local out=$(
+    case "$spec" in
+      black)    echo -n "${g}0m";;
+      red)      echo -n "${g}1m";;
+      green)    echo -n "${g}2m";;
+      yellow)   echo -n "${g}3m";;
+      blue)     echo -n "${g}4m";;
+      magenta)  echo -n "${g}5m";;
+      cyan)     echo -n "${g}6m";;
+      white)    echo -n "${g}7m";;
+      +([0-9])) echo -n "${g}8;5;${spec}m";;
+      +([0-9]),+([0-9]),+([0-9]))
+                echo -n "${g}8;"
+                __ps1_rgb ${spec//,/ };;
+      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                echo -n "${g}8;"
+                __ps1_rgb $(( 16#${spec:1:2} )) $(( 16#${spec:3:2} )) $(( 16#${spec:5:2} ))
+                ;;
+      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                echo -n "${g}8;"
+                __ps1_rgb \
+                  "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
+                  "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
+                  "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
+                ;;
+      *)        echo -n 'm';;
+    esac
+  )
+  __ps1_debug "COLOR OUT: $out"
+  echo -n "$out"
+}
+eval "$PS1_EXTGLOB"
+unset PS1_EXTGLOB
+
 __ps1_ansi() {
   export ps1_tags_parsed=()
   __ps1_parse_tags "$@"
@@ -197,22 +250,7 @@ __ps1_ansi() {
       eol)        __ps1_ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
       clear)      __ps1_ansi_echo '\e[H\e[2J';;
       reset)      __ps1_ansi_echo '\e[0m';;
-      fg:black)   __ps1_ansi_echo '\e[30m';;
-      fg:red)     __ps1_ansi_echo '\e[31m';;
-      fg:green)   __ps1_ansi_echo '\e[32m';;
-      fg:yellow)  __ps1_ansi_echo '\e[33m';;
-      fg:blue)    __ps1_ansi_echo '\e[34m';;
-      fg:magenta) __ps1_ansi_echo '\e[35m';;
-      fg:cyan)    __ps1_ansi_echo '\e[36m';;
-      fg:white)   __ps1_ansi_echo '\e[37m';;
-      bg:black)   __ps1_ansi_echo '\e[30m';;
-      bg:red)     __ps1_ansi_echo '\e[31m';;
-      bg:green)   __ps1_ansi_echo '\e[32m';;
-      bg:yellow)  __ps1_ansi_echo '\e[33m';;
-      bg:blue)    __ps1_ansi_echo '\e[34m';;
-      bg:magenta) __ps1_ansi_echo '\e[35m';;
-      bg:cyan)    __ps1_ansi_echo '\e[36m';;
-      bg:white)   __ps1_ansi_echo '\e[37m';;
+      fg:*|bg:*)  __ps1_ansi_echo '\e['"$(__ps1_color $tag)";;
       bold)       __ps1_ansi_echo '\e[1m';;
       dim)        __ps1_ansi_echo '\e[2m';;
       italic)     __ps1_ansi_echo '\e[3m';;
@@ -290,22 +328,7 @@ __ps1_prompt() {
       eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
-      fg:black)    echo -n '\[\e[30m\]';;
-      fg:red)      echo -n '\[\e[31m\]';;
-      fg:green)    echo -n '\[\e[32m\]';;
-      fg:yellow)   echo -n '\[\e[33m\]';;
-      fg:blue)     echo -n '\[\e[34m\]';;
-      fg:magenta)  echo -n '\[\e[35m\]';;
-      fg:cyan)     echo -n '\[\e[36m\]';;
-      fg:white)    echo -n '\[\e[37m\]';;
-      bg:black)    echo -n '\[\e[30m\]';;
-      bg:red)      echo -n '\[\e[31m\]';;
-      bg:green)    echo -n '\[\e[32m\]';;
-      bg:yellow)   echo -n '\[\e[33m\]';;
-      bg:blue)     echo -n '\[\e[34m\]';;
-      bg:magenta)  echo -n '\[\e[35m\]';;
-      bg:cyan)     echo -n '\[\e[36m\]';;
-      bg:white)    echo -n '\[\e[37m\]';;
+      fg:*|bg:*)   echo -n '\e['; __ps1_color "$tag"; echo -n '\]';;
       bold)        echo -n '\[\e[1m\]';;
       dim)         echo -n '\[\e[2m\]';;
       italic)      echo -n '\[\e[3m\]';;
