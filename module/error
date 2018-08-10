@@ -11,6 +11,6 @@ __ps1_module_error() {
 }
 
 __ps1_style_default_error() {
-  echo -n '{fg:red}'
+  echo -n '{fg:#F00}{bg:#FF0}'
 }
 

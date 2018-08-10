@@ -182,6 +182,11 @@ __ps1_rgb() {
   local r="$1"
   local g="$2"
   local b="$3"
+  # Currently rounds to the nearest ANSI 216 color cube value
+  # To-Do:
+  #  * Detect ANSI full color support and pass through
+  #  * Detect non-256 terminals and map to nearest bright/halfbright color
+  #  * Detect grayscale values and map to nearest ANSI grayscale value 232 (black) to 255 (white)
   echo -n "5;$((
     16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
       ( ( $b + 26 ) / 51 )
@@ -195,9 +200,7 @@ __ps1_color() {
   local g='3'; if [[ "${1:0:2}" == 'bg' ]]; then g='4'; fi
   local spec="${1:3}"
   __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
-  trap "$(shopt -p extglob)" RETURN
-  shopt -s extglob
-  local out=$(
+  #local out=$(
     case "$spec" in
       black)    echo -n "${g}0m";;
       red)      echo -n "${g}1m";;
@@ -224,9 +227,9 @@ __ps1_color() {
                 ;;
       *)        echo -n 'm';;
     esac
-  )
-  __ps1_debug "COLOR OUT: $out"
-  echo -n "$out"
+  #)
+  #__ps1_debug "COLOR OUT: $out"
+  #echo -n "$out"
 }
 eval "$PS1_EXTGLOB"
 unset PS1_EXTGLOB
@@ -239,6 +242,8 @@ __ps1_ansi() {
     __ps1_debug "CHUNK: '$x'"
   done
   unset ps1_tags_parsed
+  trap "$(shopt -p extglob)" RETURN
+  shopt -s extglob
   while (( "$#" > 0 )); do
     arg="$1"
     shift
@@ -317,6 +322,8 @@ __ps1_prompt() {
   __ps1_parse_tags "$@"
   set -- "${ps1_tags_parsed[@]}"
   unset ps1_tags_parsed
+  trap "$(shopt -p extglob)" RETURN
+  shopt -s extglob
   while (( "$#" > 0 )); do
     arg="$1"
     shift
