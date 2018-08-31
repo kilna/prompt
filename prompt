@@ -183,9 +183,6 @@ __ps1_rgb() {
   local r="$1"
   local g="$2"
   local b="$3"
-  # To-Do:
-  #  * Detect ANSI full color support and pass through
-  #  * Detect non-256 terminals and map to nearest bright/halfbright color
   local idx=''
   if [[ "$PS1_COLORS" == '24bit' ]]; then
     echo -n "2;${r};${g};${b}m"
