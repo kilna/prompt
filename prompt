@@ -159,9 +159,7 @@ __ps1_parse_tags() {
 }
 
 __ps1_ansi_echo() {
-  case "$TERM" in
-    linux|xterm*|*vt*|con*|*ansi*|screen) echo -en "$1";;
-  esac
+  [[ -z "$PS1_COLORS" || "$PS1_COLORS" == '0' ]] || echo -en "$1"
 }
 
 __ps1_ansi_style() {
@@ -465,12 +463,13 @@ case "$TERM$COLORTERM" in
       t="$(infocmp 2>/dev/null)"
       if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ ]]; then
         PS1_COLORS='24bit'
-      elif [[ "$t" =~ ^.*[[:space:]](set24f|setf24|setrgbf)=[^[:space:]]+,[[:space:]].*$ ]]; then
+      elif [[ "$t" =~ ^.*[[:space:]]set(24f|f24|rgbf)=[^[:space:]]+,[[:space:]].*$ ]]; then
         PS1_COLORS='24bit'
       else
-        for idx in 7 15 255; do
-          read -p "$(printf '\e]4;%d;?\a' $idx)" -d $'\a' -s -t 0.1 response </dev/tty || break
-          [[ -z "$response" ]] || PS1_COLORS=$(( idx + 1 ))
+        for idx in 1 7 15 255; do
+          read -p "$(printf '\e]4;%d;?\a' $idx)" -d $'\a' -s -t 0.1 response </dev/tty
+          [[ -z "$response" ]] && break
+          PS1_COLORS=$(( idx + 1 ))
         done
         unset response
       fi
@@ -478,6 +477,7 @@ case "$TERM$COLORTERM" in
         PS1_COLORS="${BASH_REMATCH[1]}"
       fi
       unset t
+      PS1_COLORS="${PS1_COLORS:-$(tput colors 2>/dev/null)}" # This shoudl work with termcap
       PS1_COLORS="${PS1_COLORS:-0}"
       ;;
 esac
@@ -523,6 +523,16 @@ Options:
           --style NAME :  Enable style NAME
                -s NAME    Styles can be found in:
                             $PS1_ROOT/style
+
+         --colors SPEC :  Override auto-detection for the number of ANSI colors
+               -c SPEC      the current terminal supports.
+
+                          SPEC is one of:
+                            0       No ANSI color support
+                            8
+                            16
+                            256
+                            24bit   Truecolor ANSI terminal support
 
                 --bold :  Bold all styles
                     -b    
