@@ -179,18 +179,32 @@ __ps1_ansi_style() {
 }
 
 __ps1_rgb() {
+  # Rounds to the nearest ANSI 216 color cube or 24 Grayscale value
   local r="$1"
   local g="$2"
   local b="$3"
-  # Currently rounds to the nearest ANSI 216 color cube value
   # To-Do:
   #  * Detect ANSI full color support and pass through
   #  * Detect non-256 terminals and map to nearest bright/halfbright color
-  #  * Detect grayscale values and map to nearest ANSI grayscale value 232 (black) to 255 (white)
-  echo -n "5;$((
-    16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
-      ( ( $b + 26 ) / 51 )
-  ))m"
+  local idx=''
+  if [[ "$PS1_COLORS" == '24bit' ]]; then
+    echo -n "2;${r};${g};${b}m"
+    return
+  fi
+  if [[ "$r" == "$g" && "$g" == "$b" && "$b" == "$r" ]]; then
+    # Map to an ANSI Black/White/Gray color
+    if   [[ "$r" -lt 4 ]]; then idx=16         # Black
+    elif [[ "$r" -gt 245 ]]; then idx=231      # White
+    else idx=$(( 231 + ( ( $r + 4 ) / 10 ) ))  # Grays from 080808-eeeeee
+    fi
+  else
+    # Map to ANSI 216 indexed
+    idx=$((
+      16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
+        ( ( $b + 26 ) / 51 )
+    ))
+  fi
+  echo -n "5;${idx}m"
 }
 
 PS1_EXTGLOB=$(shopt -p extglob)
@@ -445,6 +459,32 @@ PS1_STYLES=('user' 'default')
 PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
 PS1_NAME="${BASH_SOURCE[0]##*/}"
 PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
+case "$TERM$COLORTERM" in
+  *truecolor*|*24bit*)
+      PS1_COLORS='24bit';;
+  *256*)
+      PS1_COLORS='256';;
+  *)
+      t="$(infocmp 2>/dev/null)"
+      if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ ]]; then
+        PS1_COLORS='24bit'
+      elif [[ "$t" =~ ^.*[[:space:]](set24f|setf24|setrgbf)=[^[:space:]]+,[[:space:]].*$ ]]; then
+        PS1_COLORS='24bit'
+      else
+        for idx in 7 15 255; do
+          read -p "$(printf '\e]4;%d;?\a' $idx)" -d $'\a' -s -t 0.1 response </dev/tty || break
+          [[ -z "$response" ]] || PS1_COLORS=$(( idx + 1 ))
+        done
+        unset response
+      fi
+      if [[ -z "$PS1_COLORS" && "$t" =~ ^.*[[:space:]]colors#([0-9]+),[[:space:]].*$ ]]; then
+        PS1_COLORS="${BASH_REMATCH[1]}"
+      fi
+      unset t
+      PS1_COLORS="${PS1_COLORS:-0}"
+      ;;
+esac
+
 user_styles=()
 load_modules=()
 while (( "$#" > 0 )); do
@@ -458,6 +498,7 @@ while (( "$#" > 0 )); do
     -u|--user-style)   user_styles+=("$1"); shift ;;
     -p|--prompt)       set_prompt="$1"; shift ;;
     -d|--debug)        PS1_DEBUG=1 ;;
+    -c|--colors)       PS1_COLORS=("$1"); shift;;
     -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
     -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
     -h|--help)         show_help=1 ;;
