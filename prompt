@@ -176,66 +176,64 @@ __ps1_ansi_style() {
   done
 }
 
-__ps1_rgb() {
-  # Rounds to the nearest ANSI 216 color cube or 24 Grayscale value
-  local r="$1"
-  local g="$2"
-  local b="$3"
-  local idx=''
-  if [[ "$PS1_COLORS" == '24bit' ]]; then
-    echo -n "2;${r};${g};${b}m"
-    return
-  fi
-  if [[ "$r" == "$g" && "$g" == "$b" && "$b" == "$r" ]]; then
-    # Map to an ANSI Black/White/Gray color
-    if   [[ "$r" -lt 4 ]]; then idx=16         # Black
-    elif [[ "$r" -gt 245 ]]; then idx=231      # White
-    else idx=$(( 231 + ( ( $r + 4 ) / 10 ) ))  # Grays from 080808-eeeeee
-    fi
-  else
-    # Map to ANSI 216 indexed
-    idx=$((
-      16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
-        ( ( $b + 26 ) / 51 )
-    ))
-  fi
-  echo -n "5;${idx}m"
-}
-
 PS1_EXTGLOB=$(shopt -p extglob)
 shopt -s extglob
 __ps1_color() {
   # If we're foreground $g is set to 3, if background it's set to 4
-  local g='3'; if [[ "${1:0:2}" == 'bg' ]]; then g='4'; fi
+  local fb='3'; if [[ "${1:0:2}" == 'bg' ]]; then fb='4'; fi
   local spec="${1:3}"
   __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
   #local out=$(
+    local rgb=()
     case "$spec" in
-      black)    echo -n "${g}0m";;
-      red)      echo -n "${g}1m";;
-      green)    echo -n "${g}2m";;
-      yellow)   echo -n "${g}3m";;
-      blue)     echo -n "${g}4m";;
-      magenta)  echo -n "${g}5m";;
-      cyan)     echo -n "${g}6m";;
-      white)    echo -n "${g}7m";;
-      +([0-9])) echo -n "${g}8;5;${spec}m";;
+      black)    echo -n "\\e[${fb}0m";;
+      red)      echo -n "\\e[${fb}1m";;
+      green)    echo -n "\\e[${fb}2m";;
+      yellow)   echo -n "\\e[${fb}3m";;
+      blue)     echo -n "\\e[${fb}4m";;
+      magenta)  echo -n "\\e[${fb}5m";;
+      cyan)     echo -n "\\e[${fb}6m";;
+      white)    echo -n "\\e[${fb}7m";;
+      +([0-9])) echo -n "\\e[${fb}8;5;${spec}m";;
       +([0-9]),+([0-9]),+([0-9]))
-                echo -n "${g}8;"
-                __ps1_rgb ${spec//,/ };;
-      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-                echo -n "${g}8;"
-                __ps1_rgb $(( 16#${spec:1:2} )) $(( 16#${spec:3:2} )) $(( 16#${spec:5:2} ))
-                ;;
-      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-                echo -n "${g}8;"
-                __ps1_rgb \
-                  "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
-                  "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
+                rgb=( ${spec//,/ } );;
+      '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                rgb=(
+                  "$((16#${spec:1:2}))"
+                  "$((16#${spec:3:2}))"
+                  "$((16#${spec:5:2}))"
+                );;
+      '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                rgb=(
+                  "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))"
+                  "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))"
                   "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
-                ;;
-      *)        echo -n 'm';;
+                );;
     esac
+    if (( "${#rgb[@]}" == 3 )); then
+      local idx=''
+      if [[ "$PS1_COLORS" == '24bit' ]]; then
+        echo -n "\\e[${fb}8;2;${rgb[0]};${rgb[1]};${rgb[2]}m"
+      else
+        if [[ "${rgb[0]}" == "${rgb[1]}" &&
+              "${rgb[1]}" == "${rgb[2]}" &&
+              "${rgb[0]}" == "${rgb[2]}" ]]; then
+          # Map to an ANSI Black/White/Gray color
+          if   [[ "${rgb[0]}" -lt 4   ]]; then idx=16      # Black
+          elif [[ "${rgb[0]}" -gt 245 ]]; then idx=231     # White
+          else idx=$(( 231 + ( ( ${rgb[0]} + 4 ) / 10 ) )) # Grays
+          fi
+        else
+          # Map to ANSI 216 indexed
+          idx=$((
+            ( ( ( ${rgb[0]} + 26 ) / 51 ) * 36 ) + 
+            ( ( ( ${rgb[1]} + 26 ) / 51 ) * 6  ) +
+              ( ( ${rgb[2]} + 26 ) / 51 )        + 16
+          ))
+        fi
+        echo -n "\\e[${fb}8;5;${idx}m"
+      fi
+    fi
   #)
   #__ps1_debug "COLOR OUT: $out"
   #echo -n "$out"
@@ -264,7 +262,7 @@ __ps1_ansi() {
       eol)        __ps1_ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
       clear)      __ps1_ansi_echo '\e[H\e[2J';;
       reset)      __ps1_ansi_echo '\e[0m';;
-      fg:*|bg:*)  __ps1_ansi_echo '\e['"$(__ps1_color $tag)";;
+      fg:*|bg:*)  __ps1_ansi_echo "$(__ps1_color $tag)";;
       bold)       __ps1_ansi_echo '\e[1m';;
       dim)        __ps1_ansi_echo '\e[2m';;
       italic)     __ps1_ansi_echo '\e[3m';;
@@ -344,7 +342,7 @@ __ps1_prompt() {
       eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
-      fg:*|bg:*)   echo -n '\e['; __ps1_color "$tag"; echo -n '\]';;
+      fg:*|bg:*)   echo -n '\['$(__ps1_color "$tag")'\]';;
       bold)        echo -n '\[\e[1m\]';;
       dim)         echo -n '\[\e[2m\]';;
       italic)      echo -n '\[\e[3m\]';;
@@ -431,6 +429,34 @@ __ps1_modules() {
   return $err
 }
 
+__ps1_colors() {
+  case "$TERM$COLORTERM" in
+    *truecolor*|*24bit*) echo '24bit'; return;;
+    *256*)               echo '256';   return;;
+  esac
+  local t="$(infocmp 2>/dev/null)"
+  if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ || 
+        "$t" =~ ^.*[[:space:]]set(24f|f24|rgbf)=[^[:space:]]+,[[:space:]].*$
+     ]]; then
+    echo '24bit'; return
+  fi
+  local REPLY
+  printf '\e]4;%d;?\a' 1
+  read -d $'\a' -s -t 0.1 </dev/tty
+  if [[ ! -z "$REPLY" ]]; then
+    for idx in 255 15 7; do
+      printf '\e]4;%d;?\a' $idx
+      read -d $'\a' -s -t 0.1 </dev/tty
+      if [[ ! -z "$REPLY" ]]; then echo $(( idx + 1 )); return; fi
+    done
+  fi
+  if [[ "$t" =~ ^.*[[:space:]]colors#([0-9]+),[[:space:]].*$ ]]; then
+    echo "${BASH_REMATCH[1]}"; return
+  fi
+  tput colors 2>/dev/null && return # This should work with termcap
+  echo '0' # If we got this far, we must not support colors at all
+}
+
 __ps1_vars
 for var in "${PS1_VARS[@]}"; do
   [[ "$var" != 'PS1_ORIG' && "$var" != 'PS1_VARS' ]] && unset $var
@@ -454,33 +480,7 @@ PS1_STYLES=('user' 'default')
 PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
 PS1_NAME="${BASH_SOURCE[0]##*/}"
 PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
-case "$TERM$COLORTERM" in
-  *truecolor*|*24bit*)
-      PS1_COLORS='24bit';;
-  *256*)
-      PS1_COLORS='256';;
-  *)
-      t="$(infocmp 2>/dev/null)"
-      if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ ]]; then
-        PS1_COLORS='24bit'
-      elif [[ "$t" =~ ^.*[[:space:]]set(24f|f24|rgbf)=[^[:space:]]+,[[:space:]].*$ ]]; then
-        PS1_COLORS='24bit'
-      else
-        for idx in 1 7 15 255; do
-          read -p "$(printf '\e]4;%d;?\a' $idx)" -d $'\a' -s -t 0.1 response </dev/tty
-          [[ -z "$response" ]] && break
-          PS1_COLORS=$(( idx + 1 ))
-        done
-        unset response
-      fi
-      if [[ -z "$PS1_COLORS" && "$t" =~ ^.*[[:space:]]colors#([0-9]+),[[:space:]].*$ ]]; then
-        PS1_COLORS="${BASH_REMATCH[1]}"
-      fi
-      unset t
-      PS1_COLORS="${PS1_COLORS:-$(tput colors 2>/dev/null)}" # This shoudl work with termcap
-      PS1_COLORS="${PS1_COLORS:-0}"
-      ;;
-esac
+PS1_COLORS="$(__ps1_colors)"
 
 user_styles=()
 load_modules=()
@@ -495,7 +495,7 @@ while (( "$#" > 0 )); do
     -u|--user-style)   user_styles+=("$1"); shift ;;
     -p|--prompt)       set_prompt="$1"; shift ;;
     -d|--debug)        PS1_DEBUG=1 ;;
-    -c|--colors)       PS1_COLORS=("$1"); shift;;
+    -c|--colors)       PS1_COLORS=("$1"); shift ;;
     -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
     -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
     -h|--help)         show_help=1 ;;
