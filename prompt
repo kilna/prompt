@@ -177,28 +177,50 @@ __ps1_ansi_style() {
 }
 
 __ps1_rgb() {
-  # Rounds to the nearest ANSI 216 color cube or 24 Grayscale value
+  # Rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
+  # https://docs.google.com/spreadsheets/d/1n4zg5OXYC0hBdRKBb1clx4t2HSx_cu_iiot6GYpgh1c/
   local r="$1"
   local g="$2"
   local b="$3"
-  local idx=''
+
   if [[ "$PS1_COLORS" == '24bit' ]]; then
     echo -n "2;${r};${g};${b}m"
     return
   fi
-  if [[ "$r" == "$g" && "$g" == "$b" && "$b" == "$r" ]]; then
-    # Map to an ANSI Black/White/Gray color
-    if   [[ "$r" -lt 4 ]]; then idx=16         # Black
-    elif [[ "$r" -gt 245 ]]; then idx=231      # White
-    else idx=$(( 231 + ( ( $r + 4 ) / 10 ) ))  # Grays from 080808-eeeeee
+
+  local min=''
+  local max=''
+  local total=0
+  for c in $r $g $b; do
+    if [[ "$min" == '' ]] || (( $c < $min )); then min="$c"; fi
+    if [[ "$max" == '' ]] || (( $c > $max )); then max="$c"; fi
+    total=$(( total + $c ))
+  done
+  local gray=$(( total / 3 )) # RGB colors averaged to single 0-255 gray
+
+  local idx=''
+  if (( ( max - min ) <= 21 && gray > 8 && gray <= 248 )); then
+    # If the delta between min and max is less than 21 (roughly half the 42.6
+    # shades per 6x6x6 colors) then we are dealing with a color that is
+    # effectively gray...
+    local gray6=$(( (gray / 6) * 6 )) # Nearest 6x6x6 color cube gray value
+    if (( ( gray - gray6 ) > 2 )); then
+      # If we're not within 2 shades of a 6x6x6 color cube gray, then
+      # map to 24-shade ANSI grayscale
+      idx=$(( 230 + ( ( $gray + 12 ) / 10 ) ))
     fi
-  else
-    # Map to ANSI 216 indexed
+  fi
+
+  if [[ "$idx" == '' ]]; then
+    # Map to ANSI 216 indexed color cube
     idx=$((
-      16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6 ) +
-        ( ( $b + 26 ) / 51 )
+      16                            +
+      ( ( ( $r + 26 ) / 51 ) * 36 ) +
+      ( ( ( $g + 26 ) / 51 ) * 6  ) +
+      ( ( ( $b + 26 ) / 51 ) * 1  )
     ))
   fi
+
   echo -n "5;${idx}m"
 }
 
