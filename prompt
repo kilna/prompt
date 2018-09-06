@@ -201,17 +201,16 @@ __ps1_rgb() {
   if (( ( max - min ) <= 26 )); then
     # If the delta between min and max is less than 26 (roughly 1/2 the 51.2
     # shades per 6x6x6 colors) then the color is effectively gray.
-    
-    # Determine if 24-shade grayscale or 6x6x6 gray color is closer
     local gray=$(( total / 3 )) # RGB colors as passed averaged into single 0-255 gray
-    local gray666=$(( 0 )) # Same gray locked to 6x6x6 color cube
-    local gray24=$((  )) # Same gray locked to 24-shade grayscale
-
     if ! ((
-      gray < 8 || ( gray <= 94 && gray >= 96 ) ||
-      ( gray <= 134 && gray >= 136 ) || ( gray <= 174 && gray >= 176 ) ||
-      ( gray <= 214 && gray >= 216 ) || gray >= 248
+      (                gray < 8   ) ||
+      ( gray >= 51  && gray < 58  ) ||
+      ( gray >= 102 && gray < 108 ) ||
+      ( gray >= 153 && gray < 158 ) ||
+      ( gray >= 204 && gray < 208 ) ||
+      ( gray >= 248               )
     )); then
+      # If we aren't better matched to the 6x6x6 cube, use a 24-shade ANSI gray
       idx=$(( 230 + ( ( $gray + 12 ) / 10 ) ))
     fi
   fi
