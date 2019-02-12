@@ -61,7 +61,7 @@ __ps1_lookup() {
 
 __ps1_funcs() {
   export PS1_FUNCS=()
-  while read line; do
+  while IFS='' read line; do
     local f=($line)
     [[ "${f[2]}" == '__ps1_'* ]] && PS1_FUNCS+=("${f[2]}")
   done < <(typeset -F)
@@ -69,7 +69,7 @@ __ps1_funcs() {
 
 __ps1_vars() {
   export PS1_VARS=()
-  while read line; do
+  while IFS='' read line; do
     local f=($line)
     if [[ "${f[0]}" == 'declare' ]]; then
       var="${f[2]%%=*}"
@@ -93,7 +93,7 @@ __ps1_load_style() {
   local file="$1"
   local is_unicode=0
   local code=''
-  while read line; do
+  while IFS='' read line; do
     [[ "$line" == '#'* || "$line" =~ ^[[:space:]]*$ ]] && continue
     if [[ "$line" != *':'* ]]; then
       echo "Unable to parse line '$line' in file '$file'" >&2
@@ -179,12 +179,13 @@ __ps1_ansi_style() {
 __ps1_rgb() {
   # Rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
   # https://docs.google.com/spreadsheets/d/1n4zg5OXYC0hBdRKBb1clx4t2HSx_cu_iiot6GYpgh1c/
-  local r="$1"
-  local g="$2"
-  local b="$3"
+  local ansi_fgbg="$1" # ANSI fg/bg code (either 3 or 4)
+  local r="$2"
+  local g="$3"
+  local b="$4"
 
   if [[ "$PS1_COLORS" == '24bit' ]]; then
-    echo -n "2;${r};${g};${b}m"
+    echo -n '\e['"${ansi_fgbg}8;2;${r};${g};${b}m"
     return
   fi
 
@@ -202,13 +203,10 @@ __ps1_rgb() {
     # If the delta between min and max is less than 26 (roughly 1/2 the 51.2
     # shades per 6x6x6 colors) then the color is effectively gray.
     local gray=$(( total / 3 )) # RGB colors as passed averaged into single 0-255 gray
-    if ! ((
-      (                gray < 8   ) ||
-      ( gray >= 51  && gray < 58  ) ||
-      ( gray >= 102 && gray < 108 ) ||
-      ( gray >= 153 && gray < 158 ) ||
-      ( gray >= 204 && gray < 208 ) ||
-      ( gray >= 248               )
+    if ((
+      ( gray >= 8   && gray < 51  ) || ( gray >= 58  && gray < 102 ) ||
+      ( gray >= 108 && gray < 153 ) || ( gray >= 158 && gray < 204 ) ||
+      ( gray >= 208 && gray < 248 )
     )); then
       # If we aren't better matched to the 6x6x6 cube, use a 24-shade ANSI gray
       idx=$(( 230 + ( ( $gray + 12 ) / 10 ) ))
@@ -218,56 +216,53 @@ __ps1_rgb() {
   if [[ "$idx" == '' ]]; then
     # Otherwise, map to ANSI 216 indexed color cube
     idx=$((
-      16                            +
-      ( ( ( $r + 26 ) / 51 ) * 36 ) +
-      ( ( ( $g + 26 ) / 51 ) * 6  ) +
-      ( ( ( $b + 26 ) / 51 ) * 1  )
+      16 + ( ( ( $r + 26 ) / 51 ) * 36 ) + ( ( ( $g + 26 ) / 51 ) * 6  )
+         + ( ( ( $b + 26 ) / 51 ) * 1  )
     ))
   fi
 
-  echo -n "5;${idx}m"
+  echo -n '\e['"${ansi_fgbg}8;5;${idx}m"
 }
 
-PS1_EXTGLOB=$(shopt -p extglob)
-shopt -s extglob
 __ps1_color() {
+  trap "$(shopt -p extglob)" RETURN
+  shopt -s extglob
   # If we're foreground $g is set to 3, if background it's set to 4
-  local g='3'; if [[ "${1:0:2}" == 'bg' ]]; then g='4'; fi
+  local ansi_fgbg='3'; if [[ "${1:0:2}" == 'bg' ]]; then ansi_fgbg='4'; fi
   local spec="${1:3}"
-  __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
-  #local out=$(
+   _ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
+  IFS='' read -d $'\0' -r out < <(
     case "$spec" in
-      black)    echo -n "${g}0m";;
-      red)      echo -n "${g}1m";;
-      green)    echo -n "${g}2m";;
-      yellow)   echo -n "${g}3m";;
-      blue)     echo -n "${g}4m";;
-      magenta)  echo -n "${g}5m";;
-      cyan)     echo -n "${g}6m";;
-      white)    echo -n "${g}7m";;
-      +([0-9])) echo -n "${g}8;5;${spec}m";;
+      black)    echo -n '\e['"${ansi_fgbg}0m";;
+      red)      echo -n '\e['"${ansi_fgbg}1m";;
+      green)    echo -n '\e['"${ansi_fgbg}2m";;
+      yellow)   echo -n '\e['"${ansi_fgbg}3m";;
+      blue)     echo -n '\e['"${ansi_fgbg}4m";;
+      magenta)  echo -n '\e['"${ansi_fgbg}5m";;
+      cyan)     echo -n '\e['"${ansi_fgbg}6m";;
+      white)    echo -n '\e['"${ansi_fgbg}7m";;
+      +([0-9])) echo -n '\e['"${ansi_fgbg}8;5;${spec}m";;
       +([0-9]),+([0-9]),+([0-9]))
-                echo -n "${g}8;"
-                __ps1_rgb ${spec//,/ };;
-      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-                echo -n "${g}8;"
-                __ps1_rgb $(( 16#${spec:1:2} )) $(( 16#${spec:3:2} )) $(( 16#${spec:5:2} ))
-                ;;
-      \#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-                echo -n "${g}8;"
+                __ps1_rgb "$ansi_fgbg" ${spec//,/ };;
+      '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
                 __ps1_rgb \
+                  "$ansi_fgbg" \
+                  "$(( 16#${spec:1:2} ))" \
+                  "$(( 16#${spec:3:2} ))" \
+                  "$(( 16#${spec:5:2} ))"
+                ;;
+      '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                __ps1_rgb \
+                  "$ansi_fgbg" \
                   "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
                   "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
                   "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
                 ;;
-      *)        echo -n 'm';;
     esac
-  #)
-  #__ps1_debug "COLOR OUT: $out"
-  #echo -n "$out"
+  )
+  __ps1_debug "COLOR OUT: $out"
+  echo -n "$out"
 }
-eval "$PS1_EXTGLOB"
-unset PS1_EXTGLOB
 
 __ps1_ansi() {
   export ps1_tags_parsed=()
@@ -290,7 +285,8 @@ __ps1_ansi() {
       eol)        __ps1_ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
       clear)      __ps1_ansi_echo '\e[H\e[2J';;
       reset)      __ps1_ansi_echo '\e[0m';;
-      fg:*|bg:*)  __ps1_ansi_echo '\e['"$(__ps1_color $tag)";;
+      fg:*|bg:*)  IFS='' read -d $'\0' -r color < <(__ps1_color $tag);
+                  __ps1_ansi_echo "$color";;
       bold)       __ps1_ansi_echo '\e[1m';;
       dim)        __ps1_ansi_echo '\e[2m';;
       italic)     __ps1_ansi_echo '\e[3m';;
@@ -370,7 +366,7 @@ __ps1_prompt() {
       eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
-      fg:*|bg:*)   echo -n '\e['; __ps1_color "$tag"; echo -n '\]';;
+      fg:*|bg:*)   echo -n '\['; __ps1_color "$tag"; echo -n '\]';;
       bold)        echo -n '\[\e[1m\]';;
       dim)         echo -n '\[\e[2m\]';;
       italic)      echo -n '\[\e[3m\]';;
@@ -463,6 +459,37 @@ for var in "${PS1_VARS[@]}"; do
 done
 unset PS1_VARS
 
+__ps1_get_colors() {
+  case "$TERM$COLORTERM" in
+    *truecolor*|*24bit*) echo '24bit'; return;;
+    *256*)               echo '256';   return;;
+  esac
+  trap "$(shopt -p extglob)" RETURN
+  shopt -s extglob
+  local t
+  IFS='' read -r t < <(infocmp 2>/dev/null)
+  if [[ "$t" == *+([[:space:]])@(set24f|setf24|setrgbf)=* ]]; then
+    echo '24bit'
+    return
+  fi
+  local REPLY
+  echo -e -n '\e]4;1;?\a'
+  read -p "$(echo -e -n '\e]4;1;?\a')" -d $'\a' -s -t 0.1 </dev/tty
+  if ! [[ -z "$REPLY" ]]; then
+    local colors=''
+    for idx in 255 15 7; do
+      printf '\e]4;%d;?\a' $idx
+      read -d $'\a' -s -t 0.1 </dev/tty
+      if ! [[ -z "$REPLY" ]]; then
+        echo $(( idx + 1 ))
+        return
+      fi
+    done
+  fi
+  IFS='' read -r t < <(tput colors 2>/dev/null)
+  (( t == 8 || t == 16 || t == 256 )) && echo "$t"
+}
+
 # Process --key=val args into --key val, un-bundle single-letter flags,
 # and treat -- as the end of explicit options
 ar=()
@@ -480,33 +507,7 @@ PS1_STYLES=('user' 'default')
 PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
 PS1_NAME="${BASH_SOURCE[0]##*/}"
 PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
-case "$TERM$COLORTERM" in
-  *truecolor*|*24bit*)
-      PS1_COLORS='24bit';;
-  *256*)
-      PS1_COLORS='256';;
-  *)
-      t="$(infocmp 2>/dev/null)"
-      if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ ]]; then
-        PS1_COLORS='24bit'
-      elif [[ "$t" =~ ^.*[[:space:]]set(24f|f24|rgbf)=[^[:space:]]+,[[:space:]].*$ ]]; then
-        PS1_COLORS='24bit'
-      else
-        for idx in 1 7 15 255; do
-          read -p "$(printf '\e]4;%d;?\a' $idx)" -d $'\a' -s -t 0.1 response </dev/tty
-          [[ -z "$response" ]] && break
-          PS1_COLORS=$(( idx + 1 ))
-        done
-        unset response
-      fi
-      if [[ -z "$PS1_COLORS" && "$t" =~ ^.*[[:space:]]colors#([0-9]+),[[:space:]].*$ ]]; then
-        PS1_COLORS="${BASH_REMATCH[1]}"
-      fi
-      unset t
-      PS1_COLORS="${PS1_COLORS:-$(tput colors 2>/dev/null)}" # This shoudl work with termcap
-      PS1_COLORS="${PS1_COLORS:-0}"
-      ;;
-esac
+IFS='' read -r PS1_COLORS < <(__ps1_get_colors)
 
 user_styles=()
 load_modules=()
