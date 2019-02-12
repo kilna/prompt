@@ -262,6 +262,7 @@ __ps1_color() {
   )
   __ps1_debug "COLOR OUT: $out"
   echo -n "$out"
+
 }
 
 __ps1_ansi() {
@@ -453,6 +454,34 @@ __ps1_modules() {
   return $err
 }
 
+__ps1_colors() {
+  case "$TERM$COLORTERM" in
+    *truecolor*|*24bit*) echo '24bit'; return;;
+    *256*)               echo '256';   return;;
+  esac
+  local t="$(infocmp 2>/dev/null)"
+  if [[ "$t" =~ ^.*[[:space:]](Tc|tc|RGB|rgb),[[:space:]].*$ || 
+        "$t" =~ ^.*[[:space:]]set(24f|f24|rgbf)=[^[:space:]]+,[[:space:]].*$
+     ]]; then
+    echo '24bit'; return
+  fi
+  local REPLY
+  printf '\e]4;%d;?\a' 1
+  read -d $'\a' -s -t 0.1 </dev/tty
+  if [[ ! -z "$REPLY" ]]; then
+    for idx in 255 15 7; do
+      printf '\e]4;%d;?\a' $idx
+      read -d $'\a' -s -t 0.1 </dev/tty
+      if [[ ! -z "$REPLY" ]]; then echo $(( idx + 1 )); return; fi
+    done
+  fi
+  if [[ "$t" =~ ^.*[[:space:]]colors#([0-9]+),[[:space:]].*$ ]]; then
+    echo "${BASH_REMATCH[1]}"; return
+  fi
+  tput colors 2>/dev/null && return # This should work with termcap
+  echo '0' # If we got this far, we must not support colors at all
+}
+
 __ps1_vars
 for var in "${PS1_VARS[@]}"; do
   [[ "$var" != 'PS1_ORIG' && "$var" != 'PS1_VARS' ]] && unset $var
@@ -522,7 +551,7 @@ while (( "$#" > 0 )); do
     -u|--user-style)   user_styles+=("$1"); shift ;;
     -p|--prompt)       set_prompt="$1"; shift ;;
     -d|--debug)        PS1_DEBUG=1 ;;
-    -c|--colors)       PS1_COLORS=("$1"); shift;;
+    -c|--colors)       PS1_COLORS=("$1"); shift ;;
     -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
     -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
     -h|--help)         show_help=1 ;;
