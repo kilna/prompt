@@ -2,15 +2,18 @@
 
 __ps1_module_error() {
   (( "$PS1_LAST_ERR" )) || return
+  __ps1_ansi '{bg:#FF0}'
   if __ps1_unicode; then
     __ps1_ansi "{blink}$(printf '\u26A0'){/blink} "
   else
     echo -n 'err '
   fi
   echo -n $PS1_LAST_ERR
+  __ps1_ansi '{reset}'
+  __ps1_ansi_style
 }
 
 __ps1_style_default_error() {
-  echo -n '{fg:#F00}{bg:#FF0}'
+  echo -n '{fg:#F00}'
 }
 

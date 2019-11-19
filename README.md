@@ -3,10 +3,12 @@
 Goals:
 
 * Pure Bash with no external dependencies
-* Extensible
-* Fast enough to not be painful in Git Bash for Windows (which means minimal subshelling)
-* Pretty
+* Installable in seconds
 * Simple to add to a .bash_profile
+* Extensible
+* Fast (which means minimal subshelling)
+* Pretty
+* No need to rely on custom fonts like powerline
 
 ## Usage
 

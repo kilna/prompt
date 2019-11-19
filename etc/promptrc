@@ -1,0 +1,21 @@
+
+; See http://github.com/kilna/prompt/blob/master/README.md
+prompt={modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}
+
+bold=0
+
+include=color/default:module/default:title/default
+
+[title]
+; Title format in PS1 interpolation syntax
+; see: https://www.gnu.org/software/bash/manual/html_node/Controlling-the-Prompt.html
+format=\u@\h \w
+
+; Valid modes:
+;   prepend     - Puts any custom title before the format below
+;   append      - Puts custom title after
+;   interpolate - Puts custom title wherever \z is in format
+;   static      - Don't allow custom titles (slightly faster)
+;   disabled    - No setting of titles
+mode=prepend
+

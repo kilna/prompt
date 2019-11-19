@@ -78,9 +78,7 @@ __ps1_vars() {
   done < <(typeset -p)
 }
 
-__ps1_debug() {
-  [[ "$PS1_DEBUG" ]] && echo "$@" >&2
-}
+__ps1_debug() { [[ "$PS1_DEBUG" ]] && echo "$@" >&2; }
 
 __ps1_unicode() {
   case "$LANG" in
@@ -230,7 +228,7 @@ __ps1_color() {
   # If we're foreground $g is set to 3, if background it's set to 4
   local ansi_fgbg='3'; if [[ "${1:0:2}" == 'bg' ]]; then ansi_fgbg='4'; fi
   local spec="${1:3}"
-   _ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
+  __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
   IFS='' read -d $'\0' -r out < <(
     case "$spec" in
       black)    echo -n '\e['"${ansi_fgbg}0m";;
@@ -434,7 +432,7 @@ __ps1_modules() {
   fi
   local enabled_modules=0
   for module in "${PS1_MODULES[@]}"; do
-    # local module_out="$(__ps1_module $module)"
+    #local module_out="$(__ps1_module $module)"
     local module_out
     IFS='' read -r module_out < <(__ps1_module $module)
     [[ "$module_out" ]] || continue
@@ -482,12 +480,6 @@ __ps1_colors() {
   echo '0' # If we got this far, we must not support colors at all
 }
 
-__ps1_vars
-for var in "${PS1_VARS[@]}"; do
-  [[ "$var" != 'PS1_ORIG' && "$var" != 'PS1_VARS' ]] && unset $var
-done
-unset PS1_VARS
-
 __ps1_get_colors() {
   case "$TERM$COLORTERM" in
     *truecolor*|*24bit*) echo '24bit'; return;;
@@ -518,6 +510,12 @@ __ps1_get_colors() {
   IFS='' read -r t < <(tput colors 2>/dev/null)
   (( t == 8 || t == 16 || t == 256 )) && echo "$t"
 }
+
+__ps1_vars
+for var in "${PS1_VARS[@]}"; do
+  [[ "$var" != 'PS1_ORIG' && "$var" != 'PS1_VARS' ]] && unset $var
+done
+unset PS1_VARS
 
 # Process --key=val args into --key val, un-bundle single-letter flags,
 # and treat -- as the end of explicit options
@@ -681,7 +679,6 @@ for module in "${load_modules[@]}"; do
   fi
 done
 
-
 for style in "${PS1_STYLES[@]}"; do
   [[ "$style" == 'user' ]] && continue
   __ps1_debug "PS1_STYLE: $style"
@@ -696,7 +693,6 @@ __ps1_debug "PS1_TITLE_MODE: $PS1_TITLE_MODE"
 
 PS1_TITLE_FORMAT="${PS1_TITLE_FORMAT:-\\u@\\h \\w}"
 __ps1_debug "PS1_TITLE_FORMAT: $PS1_TITLE_FORMAT"
-
 
 if [[ "${#set_prompt[@]}" -eq 0 ]]; then
   set_prompt='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
