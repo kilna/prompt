@@ -1,0 +1,17 @@
+#!/bin/bash
+
+__ps1_module_virtualenv() {
+  local out="$(basename "$VIRTUAL_ENV" 2>/dev/null)"
+  [[ "$out" ]] || return
+  if __ps1_unicode; then
+    echo -n "🐍"
+  else
+    echo -n 'py env '
+  fi
+  echo -n "$out"
+}
+
+__ps1_style_default_virtualenv() {
+  echo -n '{fg:yellow}'
+}
+

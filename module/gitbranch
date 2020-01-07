@@ -2,21 +2,23 @@
 
 which git &>/dev/null || return 0
 
-__ps1_module_git() {
+__ps1_module_gitbranch() {
   local out=''
   while read line; do
     [[ "${line:0:1}" == '*' ]] && out="${line:2}" && break
   done < <(git branch)
   [[ "$out" ]] || return
-  if __ps1_unicode; then
-    echo -n "$(printf '\u2325') "
+  if __ps1_powerline; then
+    echo -n " "
+  elif __ps1_unicode; then
+    echo -n "⌥ "
   else
     echo -n 'branch '
   fi
   echo -n "$out"
 }
 
-__ps1_style_default_git() {
+__ps1_style_default_gitbranch() {
   echo -n '{fg:cyan}'
 }
 

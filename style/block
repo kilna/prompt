@@ -2,15 +2,15 @@
 
 __ps1_style_block_module() {
   if __ps1_unicode; then
-    echo -n "{reverse}$(printf '\u258F')"
+    echo -n '{reverse}▏'
   else
-    echo -n "{reverse} "
+    echo -n '{reverse} '
   fi
 }
 
 __ps1_style_block_module_end() {
   if __ps1_unicode; then
-    echo -n "$(printf '\u2595')"
+    echo -n '▕'
   else
     echo -n ' '
   fi

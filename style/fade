@@ -2,7 +2,7 @@
 
 __ps1_style_fade_module() {
   if __ps1_unicode; then
-    echo -n "$(printf '\u2591\u2592\u2593'){reverse} "
+    echo -n '░▒▓{reverse} '
   else
     echo -n '{reverse} '
   fi
@@ -10,7 +10,7 @@ __ps1_style_fade_module() {
 
 __ps1_style_fade_module_end() {
   if __ps1_unicode; then
-    echo -n " $(printf '\u2591\u2592\u2593')"
+    echo -n ' ░▒▓'
   else
     echo -n ' '
   fi

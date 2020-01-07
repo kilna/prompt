@@ -2,7 +2,7 @@
 
 __ps1_style_shortfade_module() {
   if __ps1_unicode; then
-    echo -n "$(printf '\u2592'){reverse} "
+    echo -n '▒{reverse} '
   else
     echo -n '{reverse} '
   fi
@@ -10,7 +10,7 @@ __ps1_style_shortfade_module() {
 
 __ps1_style_shortfade_module_end() {
   if __ps1_unicode; then
-    echo -n " $(printf '\u2592')"
+    echo -n ' ▒'
   else
     echo -n ' '
   fi
