@@ -90,6 +90,7 @@ __ps1_unicode() {
 }
 
 __ps1_powerline() {
+  __ps1_unicode || return 1
   if [[ "${PS1_POWERLINE:-0}" != 1 ]]; then return 1; fi
   return 0
 }
@@ -111,9 +112,9 @@ __ps1_load_style() {
       val="${val## }"
       val="${val%% }"
       [[ "$val" == *'{u:'* ]] && is_unicode=1
-      code+="export PS1_SYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+      code+="export PS1_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
     fi
-  done < "$1"
+  done < "$file"
   if [[ ! __ps1_unicode && is_unicode ]]; then
     echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
   fi
@@ -549,6 +550,11 @@ USAGE: source $PS1_NAME [options]
 Sets the prompt in a bash session
 
 Options:
+
+          --prompt VAL :  The desired custom prompt using style formatting
+                -p VAL    Defaults to modules on their own line, followed by
+                          user@host directory on its own line, followed by
+                          a prompt ($ for user or # for root)
 
          --module NAME :  Enable module NAME
                -m NAME    Modules can be found in:
