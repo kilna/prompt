@@ -18,3 +18,9 @@
 * Fast (which means minimal subshelling)
 * Compatible with but not reliant on custom fonts like powerline
 
+## To Do
+
+* Add ansi_remap into red
+* Load command line configs from file
+* RedAlert sytem
+

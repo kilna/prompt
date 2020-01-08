@@ -29,19 +29,7 @@ shopt -s extglob
 
 red() {
 
-  # Process --key=val args into --key val, un-bundle single-letter flags,
-  # and treat -- as the end of explicit options.
-  local ar=()
-  local a
-  for (( i=1; i<=$#; i++ )); do
-    a="${@:$i:1}"
-    [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
-    [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
-    [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
-    for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done
-  done
-  set -- "${ar[@]}"
-  ar=()
+  eval $( CONFIGPARAMS='-c|--config' CONFIGFILES=$HOME/.redrc? red::cfg "$@" )
 
   # Process global options
   RED_STYLES='user default'
@@ -124,6 +112,71 @@ red() {
     eye)       red::ansi_remap "$@";;
     *)         red::$action "$@";;
   esac
+
+}
+
+cfg() {
+
+  # Clean up / unify contents of $@
+  local ar=()
+  local a
+  while (( $# > 0 )); do
+    a="$1"; shift
+    case "$a" in
+      --)    ar+=("${@:1}"); break;; # -- is end of processable args
+      --*=*) ar+=("${a%%=*}" "${a#*=}");; # break --foo=bar into --foo bar
+      --*)   ar+=("$a");; # Match --flag so we skip next line
+      -*)    # Unbundle grouped single-letter flags
+             for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done;;
+      *)     ar+=("$a");; # Any other kind of argument is passed through
+    esac
+  done
+  set -- "${ar[@]}"
+
+  # Resolve passed in config file parameters into configfiles array
+  ar=()
+  IFS=: read -a configfiles <<< "$CONFIGFILES"
+  IFS=\| read -a configparams <<< "$CONFIGPARAMS"
+  local match
+  while (( $# > 0 )); do
+    a="$1"; shift
+    match=''
+    for param in "${configparams[@]}"; do
+      if [[ "$a" == "$param" ]]; then
+        match="$1"
+        shift
+        break
+      fi
+    done
+    if [[ "$match" ]]; then
+      configfiles+=("$match")
+    else
+      ar+=("$a")
+    fi
+  done
+  set -- "${ar[@]}"
+
+  # Process each configfile into additional prepended $@ parameters
+  for file in "${configfiles[@]}"; do
+    # Files ending with ? are optional, skip if not presetn
+    if [[ "${file%'?'}" != "$file" ]]; then
+      file="${file%'?'}"
+      [[ ! -e $file ]] && continue
+    fi
+    while IFS='' read line; do
+      case "$line" in
+        ''|'#'*) : ;; # Skip blank or comment lines
+        *)       set -- "$@" "--$line";;
+      esac
+    done < <(cat $file)
+  done
+
+  # Generate a set statement to be eval'd, which will recreate $@
+  # normalized, with all of the values from the config files in place
+  echo -n "set -- "
+  for a in "$@"; do
+    echo -n \'${a//\'/\'\\\'\'}\'' '
+  done
 
 }
 
