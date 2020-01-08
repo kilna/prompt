@@ -2,11 +2,14 @@
 
 ## Features
 
-* Modular, stylable prompt
+* RedLine - Modular, stylable prompt
   * Collapsible-to-zero status line
-* Context-sensitive shell reconfiguration
+* RedEye - ANSI color remapper (similar to base16 project)
+* RedAlert - Context-sensitive shell reconfiguration
   * Remap ANSI-colors
   * Change window title
+  * Change module styles
+  * Change environment variables
 * A robust style system which can create escape codes and prefix/suffix text
 * Pure Bash with no external dependencies
 * Installable in seconds
