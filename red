@@ -5,97 +5,196 @@ if [ ! "$BASH" ]; then
   exit 1
 fi
 
+RED_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
+RED_NAME="${BASH_SOURCE[0]##*/}"
+RED_SCRIPT="$RED_ROOT/$RED_NAME"
+IFS='' read -r RED_ANSI_COLOR_DEPTH < <(red::ansi_color_depth)
+for p in $PAGER less more cat; do
+  which $p &>/dev/null && RED_PAGER="$p" && break
+done
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  cat <<EOF >&2
+This script is meant to be added into a Bash shell session via:
+
+source $RED_SCRIPT
+
+After loading via source, you can use 'red reload' to reload.
+EOF
+  exit 1
+fi
+
 trap "$(shopt -p extglob)" RETURN
 shopt -s extglob
 
-title() {
-  export PS1_TITLE="$1"
+red() {
+
+  # Process --key=val args into --key val, un-bundle single-letter flags,
+  # and treat -- as the end of explicit options.
+  local ar=()
+  local a
+  for (( i=1; i<=$#; i++ )); do
+    a="${@:$i:1}"
+    [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
+    [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
+    [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
+    for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done
+  done
+  set -- "${ar[@]}"
+  ar=()
+
+  # Process global options
+  RED_STYLES='user default'
+  local user_styles=()
+  local load_modules=()
+  for a in "$@"; do
+    case "$a" in
+      -m|--module)       load_modules+=("$1"); shift ;;
+      -a|--all-modules)  all_modules=1 ;;
+      -d|--debug)        RED_DEBUG=1;;
+      -l|--powerline)    RED_POWERLINE=1;;
+      -b|--bold)         RED_BOLD=1 ;;
+      -s|--style)        RED_STYLES="$1 ${RED_STYLES}"; shift ;;
+      -u|--user-style)   user_styles+=("$1"); shift ;;
+      -c|--colors)       RED_ANSI_COLOR_DEPTH=("$1"); shift ;;
+      *)                 ar+=("$a");;
+    esac
+  done
+  set -- "${ar[@]}"
+  ar=()
+
+  red::debug "RED_ROOT: $RED_ROOT"
+  red::debug "RED_NAME: $RED_NAME"
+  red::debug "RED_SCRIPT: $RED_SCRIPT"
+
+  if [[ "$all_modules" ]]; then
+    load_modules=()
+    for module_path in $RED_ROOT/module/*; do
+      load_modules+=("${module_path##*/}")
+    done
+  fi
+  unset all_modules
+
+  for func in $(red::funcs); do
+    if [[ "$func" == 'red::module_'* || "$func" == 'red::style_'* ]]; then
+      red::debug "Unsetting $func"
+      unset -f $func
+    fi
+  done
+
+  for user_style in "${user_styles[@]}"; do
+    str="red::style_user_${user_style%%=*}() { echo -n '${user_style#*=}'; }"
+    red::debug "$str"
+    eval "$str"
+  done
+  unset user_styles
+
+  err=0
+
+  RED_MODULES=''
+  for module in "${load_modules[@]}"; do
+    red::debug "Loading module: $module"
+    if ! source "${RED_ROOT}/module/${module}"; then
+      echo "Unable to open $RED_NAME module $RED_ROOT/modules/$module" >&2
+      (( err++ ))
+    fi
+    if typeset -F red::module_$module &>/dev/null; then
+      red::debug "Module $module loaded successfully"
+      RED_MODULES+="$module "
+    fi
+  done
+
+  for style in ${RED_STYLES}; do
+    [[ "$style" == 'user' ]] && continue
+    red::debug "RED_STYLE: $style"
+    if ! source "${RED_ROOT}/style/${style}"; then
+      echo "Unable to open $RED_NAME style $RED_ROOT/style/$style" >&2
+      (( err++ ))
+    fi
+  done
+
+  local action="$1"
+  shift
+
+  case "$action" in
+    -h|--help) red::help;;
+    help)      if [[ "$1" != '' ]]; then red::help
+               else action="$1"; shift; red::help::$action "$@"; fi;;
+    line)      red::prompt "$@";;
+    eye)       red::ansi_remap "$@";;
+    *)         red::$action "$@";;
+  esac
+
 }
 
-notitle() {
-  unset PS1_TITLE
-}
+red::title() { export RED_TITLE="$1"; }
 
-prompt() {
-  export PS1="$PS1_ORIG"
-  __ps1_debug "Running $PS1_SCRIPT"
-  if [[ -e $PS1_SCRIPT ]]; then
-    source $PS1_SCRIPT "$@"
+red::notitle() { unset RED_TITLE; }
+
+red::reload() {
+  red::debug "Running $RED_SCRIPT"
+  if [[ -e $RED_SCRIPT ]]; then
+    source $RED_SCRIPT "$@"
   else
-    echo "Unable to find PS1_SCRIPT: $PS1_SCRIPT" >&2
+    echo "Unable to find RED_SCRIPT: $RED_SCRIPT" >&2
     return 1
   fi
 }
 
-noprompt() {
-  export PS1="$PS1_ORIG"
-  local debug="$PS1_DEBUG"
-  for var in $(__ps1_vars); do
+red::unload() {
+  if [[ "$RED_PS1_ORIG" != '' ]]; then export PS1="$RED_PS1_ORIG"; fi
+  local debug="$RED_DEBUG"
+  for var in $(red::vars); do
     [[ "$debug" ]] && echo "Unsetting $var" >&2
     unset $var &>/dev/null
   done
-  for func in $(__ps1_funcs) title notitle prompt noprompt; do
+  for func in $(red::funcs); do
     [[ "$debug" ]] && echo "Unsetting $func" >&2
     unset -f $func &>/dev/null
   done
 }
 
-__ps1_lookup() {
-  if typset -F __ps1_$1; then
-    __ps1_$1
-    return $?
-  fi
-  if typset -F ps1_$1; then
-    ps1_$1
-    return $?
-  fi
-  if typeset $1; then
-    eval 'echo -n $ps1_'"$1"
-    return 0
-  fi
+red::lookup() {
+  if typeset -F red::$1; then red::$1; return $?; fi
+  if typeset $1; then eval 'echo -n $red_'"$1"; return 0; fi
   return 1
 }
 
-__ps1_funcs() {
+red::funcs() {
   while IFS='' read line; do
     local f=($line)
     if [[ "${f[0]}" == 'declare' &&
           "${f[1]}" == '-f' && 
-          "${f[2]}" == '__ps1_'*
+          "${f[2]}" == 'red::'*
        ]]; then
       echo -n "${f[2]} "
     fi
   done < <(typeset -F)
 }
 
-__ps1_vars() {
+red::vars() {
   while IFS='' read line; do
     local f=($line)
     if [[ "${f[0]}" == 'declare' &&
           "${f[1]}" == '-x' &&
-          "${f[2]}" == 'PS1_'*'='
+          "${f[2]}" == 'RED_'*'='
        ]]; then
       echo -n "${f[2]%%=*} "
     fi
   done < <(typeset -x)
 }
 
-__ps1_debug() { [[ "$PS1_DEBUG" ]] && echo "$@" >&2; }
+red::debug() { [[ "$RED_DEBUG" ]] && echo "$@" >&2; }
 
-__ps1_unicode() {
-  case "$LANG" in
-    *'UTF-8'*) return 0;;
-    *)         return 1;;
-  esac
-}
+red::unicode() { case "$LANG" in *'UTF-8'*) return 0;; *) return 1;; esac; }
 
-__ps1_powerline() {
-  __ps1_unicode || return 1
-  if [[ "${PS1_POWERLINE:-0}" != 1 ]]; then return 1; fi
+red::powerline() {
+  red::unicode || return 1
+  if [[ "${RED_POWERLINE:-0}" != 1 ]]; then return 1; fi
   return 0
 }
 
-__ps1_load_style() {
+red::load_style() {
   local file="$1"
   local is_unicode=0
   local code=''
@@ -112,16 +211,16 @@ __ps1_load_style() {
       val="${val## }"
       val="${val%% }"
       [[ "$val" == *'{u:'* ]] && is_unicode=1
-      code+="export PS1_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+      code+="export RED_SYLE_${name^^}='${val//\'/\\\'}'"$'\n';
     fi
-  done < "$file"
-  if [[ ! __ps1_unicode && is_unicode ]]; then
+  done < "$1"
+  if [[ ! red::unicode && is_unicode ]]; then
     echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
   fi
   eval "$code"
 }
 
-__ps1_parse_tags() {
+red::parse_markup() {
   local ar=()
   for str in "$@"; do
     while [[ "$str" != '' ]]; do
@@ -163,31 +262,32 @@ __ps1_parse_tags() {
       fi
     done
   done
-  export ps1_tags_parsed=''
+  export red_markup_parsed=''
   for chunk in "${ar[@]}"; do
-    ps1_tags_parsed+="$chunk"$'\033'
+    red_markup_parsed+="$chunk"$'\033'
   done
 }
 
-__ps1_ansi_echo() {
-  [[ -z "$PS1_COLORS" || "$PS1_COLORS" == '0' ]] || echo -en "$1"
+red::ansi_echo() {
+  [[ -z "$RED_ANSI_COLOR_DEPTH" || "$RED_ANSI_COLOR_DEPTH" == '0' ]] \
+    || echo -en "$1"
 }
 
-__ps1_ansi_style() {
-  [[ "$PS1_BOLD" ]] && __ps1_ansi '{bold}'
+red::style_as_ansi() {
+  [[ "$RED_BOLD" ]] && red::markup_as_ansi '{bold}'
   for property in "$1" 'default'; do
-    for style in ${PS1_STYLES}; do
+    for style in ${RED_STYLES}; do
       local out
-      IFS='' read -r out < <(__ps1_style_${style}_${property} 2>/dev/null)
+      IFS='' read -r out < <(red::style_${style}_${property} 2>/dev/null)
       if [[ "$out" != '' ]]; then
-        __ps1_ansi "$out"
+        red::markup_as_ansi "$out"
         return
       fi
     done
   done
 }
 
-__ps1_rgb() {
+red::rgb_as_ansi() {
   # Rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
   # https://docs.google.com/spreadsheets/d/1n4zg5OXYC0hBdRKBb1clx4t2HSx_cu_iiot6GYpgh1c/
   local ansi_fgbg="$1" # ANSI fg/bg code (either 3 or 4)
@@ -196,7 +296,7 @@ __ps1_rgb() {
   local b="$4"
 
   # If we're in 24 bit mode we don't have to round, return using RGB syntax
-  if [[ "$PS1_COLORS" == '24bit' ]]; then
+  if [[ "$RED_ANSI_COLOR_DEPTH" == '24bit' ]]; then
     echo -n '\e['"${ansi_fgbg}8;2;${r};${g};${b}m"
     return
   fi
@@ -236,11 +336,11 @@ __ps1_rgb() {
   echo -n '\e['"${ansi_fgbg}8;5;${idx}m"
 }
 
-__ps1_color() {
+red::color_tag_as_ansi() {
   # If we're foreground $g is set to 3, if background it's set to 4
   local ansi_fgbg='3'; if [[ "${1:0:2}" == 'bg' ]]; then ansi_fgbg='4'; fi
   local spec="${1:3}"
-  __ps1_debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
+  red::debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
   case "$spec" in
     black)    echo -n '\e['"${ansi_fgbg}0m";;
     red)      echo -n '\e['"${ansi_fgbg}1m";;
@@ -252,16 +352,16 @@ __ps1_color() {
     white)    echo -n '\e['"${ansi_fgbg}7m";;
     +([0-9])) echo -n '\e['"${ansi_fgbg}8;5;${spec}m";;
     +([0-9]),+([0-9]),+([0-9]))
-              __ps1_rgb "$ansi_fgbg" ${spec//,/ };;
+              red::rgb_as_ansi "$ansi_fgbg" ${spec//,/ };;
     '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-              __ps1_rgb \
+              red::rgb_as_ansi \
                 "$ansi_fgbg" \
                 "$(( 16#${spec:1:2} ))" \
                 "$(( 16#${spec:3:2} ))" \
                 "$(( 16#${spec:5:2} ))"
               ;;
     '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-              __ps1_rgb \
+              red::rgb_as_ansi \
                 "$ansi_fgbg" \
                 "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
                 "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
@@ -270,15 +370,15 @@ __ps1_color() {
   esac
 }
 
-__ps1_ansi() {
-  __ps1_parse_tags "$@"
+red::markup_as_ansi() {
+  red::parse_markup "$@"
   local chunks=()
   while IFS='' read -r -d $'\033' chunk; do
-    __ps1_debug "CHUNK: '$chunk'"
+    red::debug "CHUNK: '$chunk'"
     chunks+=("$chunk")
-  done < <(echo "${ps1_tags_parsed}")
+  done < <(echo "${red_markup_parsed}")
   set -- "${chunks[@]}"
-  unset chunks ps1_tags_parsed
+  unset chunks red_markup_parsed
   trap "$(shopt -p extglob)" RETURN
   shopt -s extglob
   while (( $# > 0 )); do
@@ -287,82 +387,82 @@ __ps1_ansi() {
     [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)    __ps1_ansi_style "${tag:6}";;
-      /style:*)   __ps1_ansi_style "${tag:7}_end";;
-      eol)        __ps1_ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
-      clear)      __ps1_ansi_echo '\e[H\e[2J';;
-      reset)      __ps1_ansi_echo '\e[0m';;
-      fg:*|bg:*)  IFS='' read -d $'\0' -r color < <(__ps1_color $tag);
-                  __ps1_debug "COLOR: $color";
-                  __ps1_ansi_echo "$color";;
-      bold)       __ps1_ansi_echo '\e[1m';;
-      /bold)      __ps1_ansi_echo '\e[21m';;
-      dim)        __ps1_ansi_echo '\e[2m';;
-      /dim)       __ps1_ansi_echo '\e[22m';;
-      italic)     __ps1_ansi_echo '\e[3m';;
-      /italic)    __ps1_ansi_echo '\e[23m';;
-      underline)  __ps1_ansi_echo '\e[4m';;
-      /underline) __ps1_ansi_echo '\e[24m';;
-      blink)      __ps1_ansi_echo '\e[5m';;
-      /blink)     __ps1_ansi_echo '\e[25m';;
-      fastblink)  __ps1_ansi_echo '\e[6m';;
-      /fastblink) __ps1_ansi_echo '\e[26m';;
-      reverse)    __ps1_ansi_echo '\e[7m';;
-      /reverse)   __ps1_ansi_echo '\e[27m';;
-      hidden)     __ps1_ansi_echo '\e[8m';;
-      /hidden)    __ps1_ansi_echo '\e[28m';;
+      style:*)    red::style_as_ansi "${tag:6}";;
+      /style:*)   red::style_as_ansi "${tag:7}_end";;
+      eol)        red::ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
+      clear)      red::ansi_echo '\e[H\e[2J';;
+      reset)      red::ansi_echo '\e[0m';;
+      fg:*|bg:*)  IFS='' read -d $'\0' -r color < <(red::color_tag_as_ansi $tag);
+                  red::debug "COLOR: $color";
+                  red::ansi_echo "$color";;
+      bold)       red::ansi_echo '\e[1m';;
+      /bold)      red::ansi_echo '\e[21m';;
+      dim)        red::ansi_echo '\e[2m';;
+      /dim)       red::ansi_echo '\e[22m';;
+      italic)     red::ansi_echo '\e[3m';;
+      /italic)    red::ansi_echo '\e[23m';;
+      underline)  red::ansi_echo '\e[4m';;
+      /underline) red::ansi_echo '\e[24m';;
+      blink)      red::ansi_echo '\e[5m';;
+      /blink)     red::ansi_echo '\e[25m';;
+      fastblink)  red::ansi_echo '\e[6m';;
+      /fastblink) red::ansi_echo '\e[26m';;
+      reverse)    red::ansi_echo '\e[7m';;
+      /reverse)   red::ansi_echo '\e[27m';;
+      hidden)     red::ansi_echo '\e[8m';;
+      /hidden)    red::ansi_echo '\e[28m';;
       space)      echo -n ' ';;
       *)          echo -n "{$tag}";;
     esac
   done
 }
 
-__ps1_title() {
+red::title() {
   local last_err="$?" # Cache last command's error...
-  if [[ "$PS1_TITLE" ]]; then
-    case "$PS1_TITLE_MODE" in
-      prepend)     echo -n "$PS1_TITLE"' - ';;
-      append)      echo -n ' - '"$PS1_TITLE";;
-      interpolate) echo -n "$PS1_TITLE";;
+  if [[ "$RED_TITLE" ]]; then
+    case "$RED_TITLE_MODE" in
+      prepend)     echo -n "$RED_TITLE"' - ';;
+      append)      echo -n ' - '"$RED_TITLE";;
+      interpolate) echo -n "$RED_TITLE";;
     esac
   fi
-  return $last_err # Needed by __ps1_modules to show error
+  return $last_err # Needed by red::modules to show error
 }
 
-__ps1_prompt_title() {
-  if [[ "$PS1_TITLE_MODE" != 'disabled' ]]; then
+red::title_as_ps1() {
+  if [[ "$RED_TITLE_MODE" != 'disabled' ]]; then
     echo -n '\[\e]0;\]'
-    case "$PS1_TITLE_MODE" in
-      static)      echo -n "$PS1_TITLE_FORMAT";;
-      prepend)     echo -n '`__ps1_title`'"$PS1_TITLE_FORMAT";;
-      append)      echo -n "$PS1_TITLE_FORMAT"'`__ps1_title`';;
-      interpolate) echo -n "${PS1_TITLE_FORMAT//\\z/'`__ps1_title`'}";;
+    case "$RED_TITLE_MODE" in
+      static)      echo -n "$RED_TITLE_FORMAT";;
+      prepend)     echo -n '`red::title`'"$RED_TITLE_FORMAT";;
+      append)      echo -n "$RED_TITLE_FORMAT"'`red::title`';;
+      interpolate) echo -n "${RED_TITLE_FORMAT//\\z/'`red::title`'}";;
     esac
     echo -n '\a'
   fi
 }
 
-__ps1_prompt_style() {
-  [[ "$PS1_BOLD" ]] && __ps1_prompt '{bold}'
+red::style_as_ps1() {
+  [[ "$RED_BOLD" ]] && red::markup_as_ps1 '{bold}'
   for property in $1 default; do
-    for style in ${PS1_STYLES}; do
+    for style in ${RED_STYLES}; do
       local out
-      IFS='' read -r out < <(__ps1_style_${style}_${property} 2>/dev/null)
+      IFS='' read -r out < <(red::style_${style}_${property} 2>/dev/null)
       if [[ "$out" != '' ]]; then
-        __ps1_prompt "$out"
+        red::markup_as_ps1 "$out"
         return
       fi
     done
   done
 }
 
-__ps1_prompt() {
-  __ps1_parse_tags "$@"
+red::markup_as_ps1() {
+  red::parse_markup "$@"
   local chunks=()
   while IFS='' read -r -d $'\033' chunk; do
-    __ps1_debug "CHUNK: '$chunk'"
+    red::debug "CHUNK: '$chunk'"
     chunks+=("$chunk")
-  done < <(echo "${ps1_tags_parsed}")
+  done < <(echo "${red_markup_parsed}")
   set -- "${chunks[@]}"
   trap "$(shopt -p extglob)" RETURN
   shopt -s extglob
@@ -372,12 +472,12 @@ __ps1_prompt() {
     [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)     __ps1_prompt_style "${tag:6}";;
-      /style:*)    __ps1_prompt_style "${tag:7}_end";;
+      style:*)     red::style_as_ps1 "${tag:6}";;
+      /style:*)    red::style_as_ps1 "${tag:7}_end";;
       eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
-      fg:*|bg:*)   echo -n '\['; __ps1_color "$tag"; echo -n '\]';;
+      fg:*|bg:*)   echo -n '\['; red::color_tag_as_ansi "$tag"; echo -n '\]';;
       bold)        echo -n '\[\e[1m\]';;
       /bold)       echo -n '\[\e[21m\]';;
       dim)         echo -n '\[\e[2m\]';;
@@ -394,44 +494,44 @@ __ps1_prompt() {
       /reverse)    echo -n '\[\e[27m\]';;
       hidden)      echo -n '\[\e[8m\]';;
       /hidden)     echo -n '\[\e[28m\]';;
-      user)        __ps1_prompt '{style:user}\u{/style:user}';;
-      dir)         __ps1_prompt '{style:dir}\w{/style:dir}';;
-      basename)    __ps1_prompt '{style:basename}\W{/style:basename}';;
-      host)        __ps1_prompt '{style:host}\h{/style:host}';;
-      fqdn)        __ps1_prompt '{style:fqdn}\H{/style:fqdn}';;
-      prompt)      __ps1_prompt '{style:prompt}\${/style:prompt}';;
-      date)        __ps1_prompt '{style:date}\d{/style:date}';;
-      time)        __ps1_prompt '{style:time}\t{/style:time}';;
-      time12)      __ps1_prompt '{style:time12}\T{/style:time12}';;
-      ampm)        __ps1_prompt '{style:ampm}\@{/style:ampm}';;
-      module:*)    echo -n '`__ps1_module '${tag:8}'`';;
-      modules)     echo -n '`__ps1_modules`';;
-      modules:eol) echo -n '`__ps1_modules -n`';;
-      modules:pad) echo -n '`__ps1_modules -p`';;
+      user)        red::markup_as_ps1 '{style:user}\u{/style:user}';;
+      dir)         red::markup_as_ps1 '{style:dir}\w{/style:dir}';;
+      basename)    red::markup_as_ps1 '{style:basename}\W{/style:basename}';;
+      host)        red::markup_as_ps1 '{style:host}\h{/style:host}';;
+      fqdn)        red::markup_as_ps1 '{style:fqdn}\H{/style:fqdn}';;
+      prompt)      red::markup_as_ps1 '{style:prompt}\${/style:prompt}';;
+      date)        red::markup_as_ps1 '{style:date}\d{/style:date}';;
+      time)        red::markup_as_ps1 '{style:time}\t{/style:time}';;
+      time12)      red::markup_as_ps1 '{style:time12}\T{/style:time12}';;
+      ampm)        red::markup_as_ps1 '{style:ampm}\@{/style:ampm}';;
+      module:*)    echo -n '`red::module '${tag:8}'`';;
+      modules)     echo -n '`red::modules`';;
+      modules:eol) echo -n '`red::modules -n`';;
+      modules:pad) echo -n '`red::modules -p`';;
       *)           echo -n "{$tag}";;
     esac
   done
 }
 
-__ps1_module() {
+red::module() {
   local exit="$?"
   module="$1"
-  __ps1_debug "module: $module"
-  #local out="$(__ps1_module_${module} 2>/dev/null)"
+  red::debug "module: $module"
+  #local out="$(red::module_${module} 2>/dev/null)"
   local out
-  IFS='' read -r out < <(__ps1_module_${module} 2>/dev/null)
-  __ps1_debug "   out: $out"
+  IFS='' read -r out < <(red::module_${module} 2>/dev/null)
+  red::debug "   out: $out"
   [[ "$out" ]] || return $exit
-  __ps1_ansi_style $module
-  __ps1_ansi_style module
+  red::style_as_ansi $module
+  red::style_as_ansi module
   echo -n "$out"
-  __ps1_ansi_style module_end
-  __ps1_ansi_style ${module}_end
+  red::style_as_ansi module_end
+  red::style_as_ansi ${module}_end
   return $exit
 }
 
-__ps1_modules() {
-  PS1_LAST_ERR="$?"
+red::modules() {
+  RED_LAST_ERR="$?"
   local newline=0
   if [[ "$1" == '-n' ]]; then
     newline=1
@@ -443,28 +543,28 @@ __ps1_modules() {
     shift
   fi
   local enabled_modules=0
-  for module in ${PS1_MODULES}; do
-    #local module_out="$(__ps1_module $module)"
+  for module in ${RED_MODULES}; do
+    #local module_out="$(red::module $module)"
     local module_out
-    IFS='' read -r module_out < <(__ps1_module $module)
+    IFS='' read -r module_out < <(red::module $module)
     [[ "$module_out" ]] || continue
-    (( enabled_modules++ )) && __ps1_ansi_style 'module_pad'
+    (( enabled_modules++ )) && red::style_as_ansi 'module_pad'
     echo -n "$module_out"
-    __ps1_ansi '{reset}'
+    red::markup_as_ansi '{reset}'
   done
   if [[ "$enabled_modules" > 0 ]]; then
     if [[ "$newline" == 1 ]]; then
-      __ps1_ansi '{eol}'
+      red::markup_as_ansi '{eol}'
     elif [[ "$pad"     == 1 ]]; then
-      __ps1_ansi_style 'module_pad'
+      red::style_as_ansi 'module_pad'
     fi
   fi
-  local err="$PS1_LAST_ERR"
-  unset PS1_LAST_ERR
+  local err="$RED_LAST_ERR"
+  unset RED_LAST_ERR
   return $err
 }
 
-__ps1_get_colors() {
+red::ansi_color_depth() {
   case "$TERM$COLORTERM" in
     *truecolor*|*24bit*) echo '24bit'; return;;
     *256*)               echo '256';   return;;
@@ -495,77 +595,28 @@ __ps1_get_colors() {
   (( t == 8 || t == 16 || t == 256 )) && echo "$t"
 }
 
-for var in $(__ps1_vars); do
-  [[ "$var" != 'PS1_ORIG' ]] && unset $var
-done
+red::help() {
+  echo "HELP!"
+}
 
-# Process --key=val args into --key val, un-bundle single-letter flags,
-# and treat -- as the end of explicit options
-ar=()
-for (( i=1; i<=$#; i++ )); do
-  a="${@:$i:1}"
-  [[   "$a" == '--'       ]] && ar+=("${@:$i}")            && break
-  [[   "$a" == '--'*'='*  ]] && ar+=("${a%%=*}" "${a#*=}") && continue
-  [[ ! "$a" =~ ^-([^-]+)$ ]] && ar+=("$a")                 && continue
-  for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done
-done
-set -- "${ar[@]}"
-unset a ar
-
-
-PS1_STYLES='user default'
-PS1_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
-PS1_NAME="${BASH_SOURCE[0]##*/}"
-PS1_SCRIPT="$PS1_ROOT/$PS1_NAME"
-IFS='' read -r PS1_COLORS < <(__ps1_get_colors)
-
-user_styles=()
-load_modules=()
-while (( $# > 0 )); do
-  arg="$1"
-  shift
-  case "$arg" in
-    -m|--module)       load_modules+=("$1"); shift ;;
-    -a|--all-modules)  all_modules=1 ;;
-    -b|--bold)         PS1_BOLD=1 ;;
-    -s|--style)        PS1_STYLES="$1 ${PS1_STYLES}"; shift ;;
-    -u|--user-style)   user_styles+=("$1"); shift ;;
-    -p|--prompt)       set_prompt="$1"; shift ;;
-    -l|--powerline)    PS1_POWERLINE=1 ;;
-    -d|--debug)        PS1_DEBUG=1 ;;
-    -c|--colors)       PS1_COLORS=("$1"); shift ;;
-    -f|--title-format) PS1_TITLE_FORMAT="$1"; shift ;;
-    -t|--title-mode)   PS1_TITLE_MODE="$1"; shift ;;
-    -h|--help)         show_help=1 ;;
-  esac
-done
-
-if [[ "$show_help" ]]; then
-  for p in $PAGER less more cat; do
-    which $p &>/dev/null && pager="$p" && break
-  done
-  cat <<EOF | $pager
-USAGE: source $PS1_NAME [options]
+red::help::prompt() {
+  cat <<EOF | $RED_PAGER
+USAGE: source $RED_NAME [options]
 
 Sets the prompt in a bash session
 
 Options:
 
-          --prompt VAL :  The desired custom prompt using style formatting
-                -p VAL    Defaults to modules on their own line, followed by
-                          user@host directory on its own line, followed by
-                          a prompt ($ for user or # for root)
-
          --module NAME :  Enable module NAME
                -m NAME    Modules can be found in:
-                            $PS1_ROOT/module
+                            $RED_ROOT/module
 
          --all-modules :  Enable all modules
                     -a
 
           --style NAME :  Enable style NAME
                -s NAME    Styles can be found in:
-                            $PS1_ROOT/style
+                            $RED_ROOT/style
 
          --colors SPEC :  Override auto-detection for the number of ANSI colors
                -c SPEC      the current terminal supports.
@@ -609,103 +660,45 @@ Options:
                             disabled     No title set in prompt
 
 For more information and additonal usage: https://github.com/kilna/prompt
-
 EOF
-  unset pager show_help
-  [[ "${BASH_SOURCE[0]}" == "$0" ]] && exit 0 || return 0
-fi
-unset show_help
+}
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  cat <<EOF >&2
-This script is meant to be added into a Bash shell session via:
+red::prompt() {
 
-source $PS1_NAME
+  if [[ "$RED_PS1_ORIG" == '' ]]; then RED_PS1_ORIG="$PS1"; fi
+  red::debug "RED_PS1_ORIG: $RED_PS1_ORIG"
 
-After loading, you can use 'prompt' to reload.
-EOF
-  exit 1
-fi
-
-__ps1_debug "PS1_ROOT: $PS1_ROOT"
-__ps1_debug "PS1_NAME: $PS1_NAME"
-__ps1_debug "PS1_SCRIPT: $PS1_SCRIPT"
-
-if [[ "$all_modules" ]]; then
-  load_modules=()
-  for module_path in $PS1_ROOT/module/*; do
-    load_modules+=("${module_path##*/}")
+  for var in $(red::vars); do
+    [[ "$var" != 'RED_PS1_ORIG' ]] && unset $var
   done
-fi
-unset all_modules
 
-for func in $(__ps1_funcs); do
-  if [[ "$func" == '__ps1_module_'* || "$func" == '__ps1_style_'* ]]; then
-    __ps1_debug "Unsetting $func"
-    unset -f $func
-  fi
-done
+  local prompt_markup='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
+  while (( $# > 0 )); do
+    arg="$1"
+    shift
+    case "$arg" in
+      -p|--prompt)       prompt_markup="$1"; shift ;;
+      -f|--title-format) RED_TITLE_FORMAT="$1"; shift ;;
+      -t|--title-mode)   RED_TITLE_MODE="$1"; shift ;;
+      -h|--help)         red::help::prompt; return ;;
+    esac
+  done
 
-for user_style in "${user_styles[@]}"; do
-  str="__ps1_style_user_${user_style%%=*}() { echo -n '${user_style#*=}'; }"
-  __ps1_debug "$str"
-  eval "$str"
-done
-unset user_styles
+  RED_TITLE_MODE="${RED_TITLE_MODE:-prepend}"
+  red::debug "RED_TITLE_MODE: $RED_TITLE_MODE"
 
-err=0
+  RED_TITLE_FORMAT="${RED_TITLE_FORMAT:-\\u@\\h \\w}"
+  red::debug "RED_TITLE_FORMAT: $RED_TITLE_FORMAT"
 
-PS1_MODULES=''
-for module in "${load_modules[@]}"; do
-  __ps1_debug "Loading module: $module"
-  if ! source "${PS1_ROOT}/module/${module}"; then
-    echo "Unable to open $PS1_NAME module $PS1_ROOT/modules/$module" >&2
-    (( err++ ))
-  fi
-  if typeset -F __ps1_module_$module &>/dev/null; then
-    __ps1_debug "Module $module loaded successfully"
-    PS1_MODULES+="$module "
-  fi
-done
+  IFS='' read -r -d $'\0' title < <(red::title_as_ps1)
+  red::debug "title: $title"
+  red::debug "prompt_markup: $prompt_markup"
+  IFS='' read -r -d $'\0' prompt < <(red::markup_as_ps1 "$prompt_markup")
+  red::debug "prompt: $prompt"
+  export PS1="$title$prompt"
+  (( err+="$?" ))
+  red::debug "PS1: $PS1"
+  unset set_prompt
 
-for style in ${PS1_STYLES}; do
-  [[ "$style" == 'user' ]] && continue
-  __ps1_debug "PS1_STYLE: $style"
-  if ! source "${PS1_ROOT}/style/${style}"; then
-    echo "Unable to open $PS1_NAME style $PS1_ROOT/style/$style" >&2
-    (( err++ ))
-  fi
-done
-
-PS1_TITLE_MODE="${PS1_TITLE_MODE:-prepend}"
-__ps1_debug "PS1_TITLE_MODE: $PS1_TITLE_MODE"
-
-PS1_TITLE_FORMAT="${PS1_TITLE_FORMAT:-\\u@\\h \\w}"
-__ps1_debug "PS1_TITLE_FORMAT: $PS1_TITLE_FORMAT"
-
-if [[ "${#set_prompt[@]}" -eq 0 ]]; then
-  set_prompt='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
-fi
-
-if [[ "$PS1_ORIG" == '' ]]; then PS1_ORIG="$PS1"; fi
-__ps1_debug "PS1_ORIG: $PS1_ORIG"
-__ps1_debug "Set prompt: $set_prompt"
-
-IFS='' read -r -d $'\0' title < <(__ps1_prompt_title)
-__ps1_debug "title: $title"
-IFS='' read -r -d $'\0' prompt < <(__ps1_prompt "$set_prompt")
-__ps1_debug "prompt: $prompt"
-export PS1="$title$prompt"
-(( err+="$?" ))
-__ps1_debug "PS1: $PS1"
-unset set_prompt
-
-for func in $(__ps1_funcs); do
-  if [[ "$func" == '__ps1_prompt_'* ]]; then
-    [[ "$debug" ]] && echo "Unsetting $func" >&2
-    unset -f $func &>/dev/null
-  fi
-done
-
-return $err
-
+  return $err
+}

@@ -1,23 +1,23 @@
 #!/bin/bash
 
-__ps1_style_block_module() {
-  if __ps1_unicode; then
+__red_style_block_module() {
+  if __red_unicode; then
     echo -n '{reverse}▏'
   else
     echo -n '{reverse} '
   fi
 }
 
-__ps1_style_block_module_end() {
-  if __ps1_unicode; then
+__red_style_block_module_end() {
+  if __red_unicode; then
     echo -n '▕'
   else
     echo -n ' '
   fi
 }
 
-__ps1_style_block_module_pad() {
-  if ! __ps1_unicode; then
+__red_style_block_module_pad() {
+  if ! __red_unicode; then
     echo -n ' '
   fi
 }

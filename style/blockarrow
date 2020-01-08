@@ -1,23 +1,23 @@
 #!/bin/bash
 
-__ps1_style_blockarrow_module() {
-  if __ps1_powerline; then
+__red_style_blockarrow_module() {
+  if __red_powerline; then
     echo -n '{reverse} '
   else
     echo -n '{reverse} '
   fi
 }
 
-__ps1_style_blockarrow_module_end() {
-  if __ps1_powerline; then
+__red_style_blockarrow_module_end() {
+  if __red_powerline; then
     echo -n ' {/reverse}'
   else
     echo -n ' '
   fi
 }
 
-__ps1_style_blockarrow_module_pad() {
-  if ! __ps1_powerline; then
+__red_style_blockarrow_module_pad() {
+  if ! __red_powerline; then
     echo -n ' '
   fi
 }

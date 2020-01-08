@@ -2,10 +2,10 @@
 
 which kubectl &>/dev/null || return 0
 
-__ps1_module_k8scontext() {
+__red_module_k8scontext() {
   local out="$(kubectl config current-context 2>/dev/null)"
   [[ "$out" ]] || return
-  if __ps1_unicode; then
+  if __red_unicode; then
     echo -n "☸ "
   else
     echo -n 'k8s '
@@ -13,7 +13,7 @@ __ps1_module_k8scontext() {
   echo -n "$out"
 }
 
-__ps1_style_default_k8scontext() {
+__red_style_default_k8scontext() {
   echo -n '{fg:blue}'
 }
 

@@ -1,19 +1,19 @@
 #!/bin/bash
 
-__ps1_module_error() {
+__red_module_error() {
   (( "$PS1_LAST_ERR" )) || return
-  __ps1_ansi '{bg:#FF0}'
-  if __ps1_unicode; then
-    __ps1_ansi "⚠ "
+  __red_ansi '{bg:#FF0}'
+  if __red_unicode; then
+    __red_ansi "⚠ "
   else
     echo -n 'err'
   fi
-  __ps1_ansi '{bg:#000}'
+  __red_ansi '{bg:#000}'
   echo -n " $PS1_LAST_ERR"
-  __ps1_ansi_style
+  __red_ansi_style
 }
 
-__ps1_style_default_error() {
+__red_style_default_error() {
   echo -n '{fg:#700}'
 }
 
