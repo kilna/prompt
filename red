@@ -29,27 +29,27 @@ shopt -s extglob
 
 red() {
 
-  eval $( CONFIGPARAMS='-c|--config' CONFIGFILES=$HOME/.redrc? red::cfg "$@" )
+  eval "$( CFGFLAGS='-c|--config' CFGFILES=$HOME/.redrc? red::cfg "$@" )"
 
   # Process global options
   RED_STYLES='user default'
   local user_styles=()
   local load_modules=()
-  for a in "$@"; do
-    case "$a" in
-      -m|--module)       load_modules+=("$1"); shift ;;
-      -a|--all-modules)  all_modules=1 ;;
-      -d|--debug)        RED_DEBUG=1;;
-      -l|--powerline)    RED_POWERLINE=1;;
-      -b|--bold)         RED_BOLD=1 ;;
-      -s|--style)        RED_STYLES="$1 ${RED_STYLES}"; shift ;;
-      -u|--user-style)   user_styles+=("$1"); shift ;;
-      -c|--colors)       RED_ANSI_COLOR_DEPTH=("$1"); shift ;;
-      *)                 ar+=("$a");;
-    esac
-  done
+  local show_help=0
+  while (( $# < 0 )); do a="$1"; shift; case "$a" in
+    -h|--help|help)    show_help=1 ;;
+    -m|--module)       load_modules+=("$1"); shift ;;
+    -a|--all-modules)  all_modules=1 ;;
+    -d|--debug)        RED_DEBUG=1;;
+    -l|--powerline)    RED_POWERLINE=1;;
+    -b|--bold)         RED_BOLD=1 ;;
+    -s|--style)        RED_STYLES="$1 ${RED_STYLES}"; shift ;;
+    -u|--user-style)   user_styles+=("$1"); shift ;;
+    -c|--colors)       RED_ANSI_COLOR_DEPTH=("$1"); shift ;;
+    *)                 ar+=("$a") ;;
+  esac; done
   set -- "${ar[@]}"
-  ar=()
+  unset ar
 
   red::debug "RED_ROOT: $RED_ROOT"
   red::debug "RED_NAME: $RED_NAME"
@@ -101,6 +101,8 @@ red() {
     fi
   done
 
+  # ToDo: Process params for multiple verbs delimited by --
+
   local action="$1"
   shift
 
@@ -115,7 +117,11 @@ red() {
 
 }
 
-cfg() {
+red::trim() {
+  local var="${1##+([[:space:]])}"; echo -n "${x%%+([[:space:]])}"
+}
+
+red::cfg() {
 
   # Clean up / unify contents of $@
   local ar=()
@@ -123,7 +129,6 @@ cfg() {
   while (( $# > 0 )); do
     a="$1"; shift
     case "$a" in
-      --)    ar+=("${@:1}"); break;; # -- is end of processable args
       --*=*) ar+=("${a%%=*}" "${a#*=}");; # break --foo=bar into --foo bar
       --*)   ar+=("$a");; # Match --flag so we skip next line
       -*)    # Unbundle grouped single-letter flags
@@ -133,15 +138,15 @@ cfg() {
   done
   set -- "${ar[@]}"
 
-  # Resolve passed in config file parameters into configfiles array
+  # Resolve passed in config file parameters into cfgfiles array
   ar=()
-  IFS=: read -a configfiles <<< "$CONFIGFILES"
-  IFS=\| read -a configparams <<< "$CONFIGPARAMS"
+  IFS=:  read -a cfgfiles <<< "$CFGFILES"
+  IFS=\| read -a cfgflags <<< "$CFGFLAGS"
   local match
   while (( $# > 0 )); do
     a="$1"; shift
     match=''
-    for param in "${configparams[@]}"; do
+    for param in "${cfgflags[@]}"; do
       if [[ "$a" == "$param" ]]; then
         match="$1"
         shift
@@ -149,23 +154,26 @@ cfg() {
       fi
     done
     if [[ "$match" ]]; then
-      configfiles+=("$match")
+      cfgfiles+=("$match")
     else
       ar+=("$a")
     fi
   done
   set -- "${ar[@]}"
 
-  # Process each configfile into additional prepended $@ parameters
-  for file in "${configfiles[@]}"; do
-    # Files ending with ? are optional, skip if not presetn
+  # Process each config file into additional prepended $@ parameters
+  for file in "${cfgfiles[@]}"; do
+    # Files ending with ? are optional, skip if not present
     if [[ "${file%'?'}" != "$file" ]]; then
       file="${file%'?'}"
       [[ ! -e $file ]] && continue
     fi
     while IFS='' read line; do
+      IFS='' read -r line < <(red::trim "$line")
       case "$line" in
         ''|'#'*) : ;; # Skip blank or comment lines
+        '['*']') # Config file sections get turned into verbs
+                 set -- -- "${line:1:$(( ${#line} - 1))}";;
         *)       set -- "$@" "--$line";;
       esac
     done < <(cat $file)
@@ -245,6 +253,9 @@ red::powerline() {
   red::unicode || return 1
   if [[ "${RED_POWERLINE:-0}" != 1 ]]; then return 1; fi
   return 0
+}
+
+red::ansi_remap() {
 }
 
 red::load_style() {

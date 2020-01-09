@@ -10,17 +10,26 @@
   * Change window title
   * Change module styles
   * Change environment variables
-* A robust style system which can create escape codes and prefix/suffix text
-* Pure Bash with no external dependencies
-* Installable in seconds
-* Simple to add to a .bashrc / .bash_profile
-* Extensible
-* Fast (which means minimal subshelling)
-* Compatible with but not reliant on custom fonts like powerline
+  * Change module output
+* A robust markup + style system
+  * Can output $PS1 compatible strings
+  * Can directly output ANSI codes
+  * User-defined runtime styles
+  * Styles can defined prefix and suffix text
+  * Compatible with but not reliant on custom fonts like powerline
+* A robust module system
+  * Extremely easy to create your own modules
+* Pure Bash
+  * Bash 3.0 for compatibility with MacOS
+  * Minimal subshelling to make it work fast with GitBash
+  * No external dependencies (any POSIX compliant system should work)
+* Quick to adopt
+  * Installable in seconds
+  * Simple to add to a .bashrc / .bash_profile
+  * Sensible defaults with easy overriding
 
 ## To Do
 
 * Add ansi_remap into red
-* Load command line configs from file
 * RedAlert sytem
 
