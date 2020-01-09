@@ -2,23 +2,24 @@
 
 which git &>/dev/null || return 0
 
-red::module::gitbranch() {
-  local out=''
+red::module::gitbranch::init() {
   while read line; do
-    [[ "${line:0:1}" == '*' ]] && out="${line:2}" && break
+    [[ "${line:0:1}" == '*' ]] && RED_LINE_GITBRANCH="${line:2}" && break
   done < <(git branch)
-  [[ "$out" ]] || return
-  if __red_powerline; then
-    echo -n " "
-  elif __red_unicode; then
-    echo -n "⌥ "
-  else
-    echo -n 'branch '
-  fi
-  echo -n "$out"
 }
 
-red::style::gitbranch() {
+red::module::gitbranch::prefix() {
+  if red::powerline; then echo -n " "
+  elif red::unicode; then echo -n "⌥ "
+  else echo -n 'branch '
+  fi
+}
+
+red::module::gitbranch::content() {
+  echo -n "$RED_LINE_GITBRANCH"
+}
+
+red::module::gitbranch::style() {
   echo -n '{fg:cyan}'
 }
 

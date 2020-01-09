@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+func() {
+  echo "contents!";
+}
+
+start=$SECONDS
+for x in {1..50000}; do
+  var=$(func)
+done
+echo capture: $(( $SECONDS - $start )) secs
+
+start=$SECONDS
+for x in {1..50000}; do
+  IFS='' read var < <(func)
+done
+echo read: $(( $SECONDS - $start )) secs
+
