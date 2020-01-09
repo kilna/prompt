@@ -1,6 +1,6 @@
 #!/bin/bash
 
-__red_module_virtualenv() {
+red::module::virtualenv() {
   local out="$(basename "$VIRTUAL_ENV" 2>/dev/null)"
   [[ "$out" ]] || return
   if __red_unicode; then
@@ -11,7 +11,7 @@ __red_module_virtualenv() {
   echo -n "$out"
 }
 
-__red_style_default_virtualenv() {
+red::style::virtualenv() {
   echo -n '{fg:yellow}'
 }
 

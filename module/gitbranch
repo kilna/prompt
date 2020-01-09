@@ -2,7 +2,7 @@
 
 which git &>/dev/null || return 0
 
-__red_module_gitbranch() {
+red::module::gitbranch() {
   local out=''
   while read line; do
     [[ "${line:0:1}" == '*' ]] && out="${line:2}" && break
@@ -18,7 +18,7 @@ __red_module_gitbranch() {
   echo -n "$out"
 }
 
-__red_style_default_gitbranch() {
+red::style::gitbranch() {
   echo -n '{fg:cyan}'
 }
 

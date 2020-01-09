@@ -5,14 +5,6 @@ if [ ! "$BASH" ]; then
   exit 1
 fi
 
-RED_ROOT="$(cd `dirname ${BASH_SOURCE[0]}` &>/dev/null; echo $PWD)"
-RED_NAME="${BASH_SOURCE[0]##*/}"
-RED_SCRIPT="$RED_ROOT/$RED_NAME"
-IFS='' read -r RED_ANSI_COLOR_DEPTH < <(red::ansi_color_depth)
-for p in $PAGER less more cat; do
-  which $p &>/dev/null && RED_PAGER="$p" && break
-done
-
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   cat <<EOF >&2
 This script is meant to be added into a Bash shell session via:
@@ -23,6 +15,9 @@ After loading via source, you can use 'red reload' to reload.
 EOF
   exit 1
 fi
+
+RED_ROOT="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD)"
+RED_SCRIPT="${RED_ROOT}/$(basename ${BASH_SOURCE[0]})"
 
 trap "$(shopt -p extglob)" RETURN
 shopt -s extglob
@@ -36,23 +31,31 @@ red() {
   local user_styles=()
   local load_modules=()
   local show_help=0
-  while (( $# < 0 )); do a="$1"; shift; case "$a" in
-    -h|--help|help)    show_help=1 ;;
-    -m|--module)       load_modules+=("$1"); shift ;;
-    -a|--all-modules)  all_modules=1 ;;
-    -d|--debug)        RED_DEBUG=1;;
-    -l|--powerline)    RED_POWERLINE=1;;
-    -b|--bold)         RED_BOLD=1 ;;
-    -s|--style)        RED_STYLES="$1 ${RED_STYLES}"; shift ;;
-    -u|--user-style)   user_styles+=("$1"); shift ;;
-    -c|--colors)       RED_ANSI_COLOR_DEPTH=("$1"); shift ;;
-    *)                 ar+=("$a") ;;
-  esac; done
+  local ar=()
+  while (( $# > 0 )); do
+    case "$1" in
+      -h|--help)         show_help=1 ;;
+      -m|--module)       load_modules+=("$2"); shift ;;
+      -a|--all-modules)  all_modules=1 ;;
+      -d|--debug)        RED_DEBUG=1 ;;
+      -l|--powerline)    RED_POWERLINE=1 ;;
+      -b|--bold)         RED_BOLD=1 ;;
+      -s|--style)        RED_STYLES="$2 ${RED_STYLES}"; shift ;;
+      -u|--user-style)   user_styles+=("$2"); shift ;;
+      -c|--colors)       RED_ANSI_COLOR_DEPTH=("$2"); shift ;;
+      *)                 ar+=("$1") ;;
+    esac
+    shift
+  done
   set -- "${ar[@]}"
   unset ar
+  if (( $show_help )); then set -- help "$@"; fi
+
+  if [[ "$RED_ANSI_COLOR_DEPTH" == '' ]]; then
+    IFS='' read -r RED_ANSI_COLOR_DEPTH < <(red::ansi_color_depth)
+  fi
 
   red::debug "RED_ROOT: $RED_ROOT"
-  red::debug "RED_NAME: $RED_NAME"
   red::debug "RED_SCRIPT: $RED_SCRIPT"
 
   if [[ "$all_modules" ]]; then
@@ -64,14 +67,13 @@ red() {
   unset all_modules
 
   for func in $(red::funcs); do
-    if [[ "$func" == 'red::module_'* || "$func" == 'red::style_'* ]]; then
-      red::debug "Unsetting $func"
-      unset -f $func
-    fi
+    case "$func" in red::module::*|red::style::*)
+      red::debug "Unsetting $func"; unset -f $func;;
+    esac
   done
 
   for user_style in "${user_styles[@]}"; do
-    str="red::style_user_${user_style%%=*}() { echo -n '${user_style#*=}'; }"
+    str="red::style::user::${user_style%%=*}() { echo -n '${user_style#*=}'; }"
     red::debug "$str"
     eval "$str"
   done
@@ -83,10 +85,10 @@ red() {
   for module in "${load_modules[@]}"; do
     red::debug "Loading module: $module"
     if ! source "${RED_ROOT}/module/${module}"; then
-      echo "Unable to open $RED_NAME module $RED_ROOT/modules/$module" >&2
+      echo "Unable to open red module $RED_ROOT/modules/$module" >&2
       (( err++ ))
     fi
-    if typeset -F red::module_$module &>/dev/null; then
+    if typeset -F red::module::$module &>/dev/null; then
       red::debug "Module $module loaded successfully"
       RED_MODULES+="$module "
     fi
@@ -96,29 +98,46 @@ red() {
     [[ "$style" == 'user' ]] && continue
     red::debug "RED_STYLE: $style"
     if ! source "${RED_ROOT}/style/${style}"; then
-      echo "Unable to open $RED_NAME style $RED_ROOT/style/$style" >&2
+      echo "Unable to open red style $RED_ROOT/style/$style" >&2
       (( err++ ))
     fi
   done
 
-  # ToDo: Process params for multiple verbs delimited by --
+  red::debug params: "$@"
 
-  local action="$1"
-  shift
-
-  case "$action" in
-    -h|--help) red::help;;
-    help)      if [[ "$1" != '' ]]; then red::help
-               else action="$1"; shift; red::help::$action "$@"; fi;;
-    line)      red::prompt "$@";;
-    eye)       red::ansi_remap "$@";;
-    *)         red::$action "$@";;
-  esac
+  # Process multiple verbs delimited by --
+  while (( $# > 0 )); do
+    local action="$1"
+    shift
+    local ar=()
+    while [[ $# -gt 0 && "$1" != '--' ]]; do
+      ar+=("$1")
+      shift
+    done
+    shift
+    $action "${ar[@]}"
+  done
 
 }
 
 red::trim() {
   local var="${1##+([[:space:]])}"; echo -n "${x%%+([[:space:]])}"
+}
+
+red::pager() {
+  for pager in $PAGER less more cat; do
+    which $pager &>/dev/null && cat - | $pager && break
+  done
+}
+
+# Escapes list entries (if needed) such that they can be eval'd in Bash
+red::esc() {
+  while (( $# > 0 )); do
+    if [[ "$1" =~ ^[a-zA-Z0-9_.,:=+/-]+$ ]]; then echo -n $1
+    else echo -n \'${1//\'/\'\\\'\'}\'; fi
+    shift; (( $# > 0 )) && echo -n ' '
+  done
+  echo # End with a newline... this'll be removed it run from $(...) anyway
 }
 
 red::cfg() {
@@ -130,7 +149,7 @@ red::cfg() {
     a="$1"; shift
     case "$a" in
       --*=*) ar+=("${a%%=*}" "${a#*=}");; # break --foo=bar into --foo bar
-      --*)   ar+=("$a");; # Match --flag so we skip next line
+      --*)   ar+=("$a");; # Match --flags so we skip next line
       -*)    # Unbundle grouped single-letter flags
              for (( x=1; x<${#a}; x++ )); do ar+=("-${a:$x:1}"); done;;
       *)     ar+=("$a");; # Any other kind of argument is passed through
@@ -161,7 +180,7 @@ red::cfg() {
   done
   set -- "${ar[@]}"
 
-  # Process each config file into additional prepended $@ parameters
+  # Process each config file into additional $@ parameters
   for file in "${cfgfiles[@]}"; do
     # Files ending with ? are optional, skip if not present
     if [[ "${file%'?'}" != "$file" ]]; then
@@ -181,18 +200,84 @@ red::cfg() {
 
   # Generate a set statement to be eval'd, which will recreate $@
   # normalized, with all of the values from the config files in place
-  echo -n "set -- "
-  for a in "$@"; do
-    echo -n \'${a//\'/\'\\\'\'}\'' '
-  done
+  red::esc set -- "$@"
 
 }
 
-red::title() { export RED_TITLE="$1"; }
+red::remap_ansi_colors() {
+  local pre='\033]'
+  local post='\033\\'
+  if [[ -n "$TMUX" ]]; then
+    pre='\033Ptmux;\033\033]'
+    post='\033\033\\\033\\'
+  elif [[ "${TERM%%[-.]*}" = "screen" ]]; then
+    pre='\033P\033]'
+    post='\007\033\\'
+  elif [[ "${TERM%%-*}" = "linux" ]]; then
+    return
+  fi
+  local ct="${pre}4;%d;rgb:%s$post" # Set color template
+  local it="$pre%s%s$post" # Set iterm template
+  local vt="$pre%s;rgb:%s$post" # Set var template
+  while [[ $# -gt 0 ]]; do
+    local spec="$1"; shift
+    local color="${spec%%=*}"
+    local rgb="${spec#*=}"
+    rgb="${rgb#'#'}" # Remove optional leading hash from RGB code
+    if [[ "$rgb" == [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f] ]]; then
+      # 3 digit to 6 digit hex RGB codes
+      rgb="${rgb:0:1}${rgb:0:1}${rgb:1:1}${rgb:1:1}${rgb:2:1}${rgb:2:1}"
+    elif [[ "$rgb" != +([0-9A-Fa-f]) || "${#rgb}" -ne 6 ]]; then
+      echo "Unrecognized RGB color value: $rgb" >&2
+      continue
+    fi
+    local rgb_s="${rgb:0:2}/${rgb:2:2}/${rgb:4:2}"
+    case "$color" in
+      *s)        local c="${color%s}" # reds -> red, brightred
+                 red::remap_ansi_colors $c=$rgb bright$c=$rgb;;
+      blackbg)   red::remap_ansi_colors black=$rgb bg=$rgb;;
+      whitebg)   red::remap_ansi_colors brightwhite=$rgb bg=$rgb;;
+      blackfg)   red::remap_ansi_colors black=$rgb fg=$rgb;;
+      whitefg)   red::remap_ansi_colors brightwhite=$rgb fg=$rgb;;
+      fg)        if [[ -n "$ITERM_SESSION_ID" ]]; then
+                   printf $it Pg $rgb; printf $it Pi $rgb
+                 else
+                   printf $vt 10 $rgb_s
+                 fi;;
+      bg)        if [[ -n "$ITERM_SESSION_ID" ]]; then
+                   printf $it Ph $rgb
+                 else
+                   printf $vt 11 $rgb_s
+                   [[ "${TERM%%-*}" == "rxvt" ]] && printf $vt 708 $rgb_s
+                 fi;;
+      [0-9]+)           printf $ct $color $rgb_s;;
+      black)            printf $ct  0 $rgb_s;;
+      red)              printf $ct  1 $rgb_s;;
+      green)            printf $ct  2 $rgb_s;;
+      yellow)           printf $ct  3 $rgb_s;;
+      blue)             printf $ct  4 $rgb_s;;
+      magenta)          printf $ct  5 $rgb_s;;
+      cyan)             printf $ct  6 $rgb_s;;
+      white|lightgray)  printf $ct  7 $rgb_s;;
+      brightblack|gray) printf $ct  8 $rgb_s;;
+      brightred)        printf $ct  9 $rgb_s;;
+      brightgreen)      printf $ct 10 $rgb_s;;
+      brightyellow)     printf $ct 11 $rgb_s;;
+      brightblue)       printf $ct 12 $rgb_s;;
+      brightmagenta)    printf $ct 13 $rgb_s;;
+      brightcyan)       printf $ct 14 $rgb_s;;
+      brightwhite)      printf $ct 15 $rgb_s;;
+      *)                echo "Unrecognized color specification: $1" 1>&2;;
+    esac
+  done
+}
 
-red::notitle() { unset RED_TITLE; }
+red::get()   { echo -n "${RED_$1}"; }
+red::set()   { export RED_${1^^}="$2"; }
+red::unset() { unset RED_${1^^}; }
 
 red::reload() {
+  red::unload
   red::debug "Running $RED_SCRIPT"
   if [[ -e $RED_SCRIPT ]]; then
     source $RED_SCRIPT "$@"
@@ -204,20 +289,31 @@ red::reload() {
 
 red::unload() {
   if [[ "$RED_PS1_ORIG" != '' ]]; then export PS1="$RED_PS1_ORIG"; fi
-  local debug="$RED_DEBUG"
   for var in $(red::vars); do
-    [[ "$debug" ]] && echo "Unsetting $var" >&2
+    [[ "$var" == 'RED_DEBUG' ]] && continue
+    red::debug "Unsetting \$$var"
     unset $var &>/dev/null
   done
   for func in $(red::funcs); do
-    [[ "$debug" ]] && echo "Unsetting $func" >&2
+    [[ "$func" == 'red::debug' ]] && continue
+    red::debug "Unsetting $func()"
     unset -f $func &>/dev/null
   done
+  unset RED_DEBUG &>/dev/null
+  unset -f red::debug &>/dev/null
 }
 
 red::lookup() {
-  if typeset -F red::$1; then red::$1; return $?; fi
-  if typeset $1; then eval 'echo -n $red_'"$1"; return 0; fi
+  funcname="red::${1//_::}"
+  if typeset -F $funcname; then
+    $funcname
+    return $?
+  fi
+  local varname="red_${1//::/_}"
+  if typeset $varname; then
+    echo -n ${!varname}
+    return 0
+  fi
   return 1
 }
 
@@ -245,17 +341,21 @@ red::vars() {
   done < <(typeset -x)
 }
 
-red::debug() { [[ "$RED_DEBUG" ]] && echo "$@" >&2; }
+red::debug() {
+  [[ "$RED_DEBUG" ]] || return
+  if (( $# > 1 )); then red::esc "$@" >&2 # Escape if we're passed a list
+  else echo "$1" >&2; fi # Otherwise dump just $1 verbatim
+}
 
-red::unicode() { case "$LANG" in *'UTF-8'*) return 0;; *) return 1;; esac; }
+red::unicode() {
+  [[ "$LANG" == *'UTF-8'* ]] && return 0
+  return 1
+}
 
 red::powerline() {
   red::unicode || return 1
-  if [[ "${RED_POWERLINE:-0}" != 1 ]]; then return 1; fi
+  [[ "${RED_POWERLINE:-0}" == 1 ]] && return 1
   return 0
-}
-
-red::ansi_remap() {
 }
 
 red::load_style() {
@@ -275,7 +375,7 @@ red::load_style() {
       val="${val## }"
       val="${val%% }"
       [[ "$val" == *'{u:'* ]] && is_unicode=1
-      code+="export RED_SYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+      code+="export RED_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
     fi
   done < "$1"
   if [[ ! red::unicode && is_unicode ]]; then
@@ -333,8 +433,7 @@ red::parse_markup() {
 }
 
 red::ansi_echo() {
-  [[ -z "$RED_ANSI_COLOR_DEPTH" || "$RED_ANSI_COLOR_DEPTH" == '0' ]] \
-    || echo -en "$1"
+  [[ "${RED_ANSI_COLOR_DEPTH:-0}" != '0' ]] && echo -en "$1"
 }
 
 red::style_as_ansi() {
@@ -342,7 +441,7 @@ red::style_as_ansi() {
   for property in "$1" 'default'; do
     for style in ${RED_STYLES}; do
       local out
-      IFS='' read -r out < <(red::style_${style}_${property} 2>/dev/null)
+      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
       if [[ "$out" != '' ]]; then
         red::markup_as_ansi "$out"
         return
@@ -406,31 +505,40 @@ red::color_tag_as_ansi() {
   local spec="${1:3}"
   red::debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
   case "$spec" in
-    black)    echo -n '\e['"${ansi_fgbg}0m";;
-    red)      echo -n '\e['"${ansi_fgbg}1m";;
-    green)    echo -n '\e['"${ansi_fgbg}2m";;
-    yellow)   echo -n '\e['"${ansi_fgbg}3m";;
-    blue)     echo -n '\e['"${ansi_fgbg}4m";;
-    magenta)  echo -n '\e['"${ansi_fgbg}5m";;
-    cyan)     echo -n '\e['"${ansi_fgbg}6m";;
-    white)    echo -n '\e['"${ansi_fgbg}7m";;
-    +([0-9])) echo -n '\e['"${ansi_fgbg}8;5;${spec}m";;
+    black)            echo -n '\e['"${ansi_fgbg}0m";;
+    red)              echo -n '\e['"${ansi_fgbg}1m";;
+    green)            echo -n '\e['"${ansi_fgbg}2m";;
+    yellow)           echo -n '\e['"${ansi_fgbg}3m";;
+    blue)             echo -n '\e['"${ansi_fgbg}4m";;
+    magenta)          echo -n '\e['"${ansi_fgbg}5m";;
+    cyan)             echo -n '\e['"${ansi_fgbg}6m";;
+    white|lightgray)  echo -n '\e['"${ansi_fgbg}7m";;
+    brightblack|gray) echo -n '\e['"${ansi_fgbg}8m";;
+    brightred)        echo -n '\e['"${ansi_fgbg}9m";;
+    brightgreen)      echo -n '\e['"${ansi_fgbg}10m";;
+    brightyellow)     echo -n '\e['"${ansi_fgbg}11m";;
+    brightblue)       echo -n '\e['"${ansi_fgbg}12m";;
+    brightmagenta)    echo -n '\e['"${ansi_fgbg}13m";;
+    brightcyan)       echo -n '\e['"${ansi_fgbg}14m";;
+    brightwhite)      echo -n '\e['"${ansi_fgbg}15m";;
+    +([0-9]))
+        echo -n '\e['"${ansi_fgbg}8;5;${spec}m";;
     +([0-9]),+([0-9]),+([0-9]))
-              red::rgb_as_ansi "$ansi_fgbg" ${spec//,/ };;
+        red::rgb_as_ansi "$ansi_fgbg" ${spec//,/ };;
     '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-              red::rgb_as_ansi \
-                "$ansi_fgbg" \
-                "$(( 16#${spec:1:2} ))" \
-                "$(( 16#${spec:3:2} ))" \
-                "$(( 16#${spec:5:2} ))"
-              ;;
+        red::rgb_as_ansi \
+          "$ansi_fgbg" \
+          "$(( 16#${spec:1:2} ))" \
+          "$(( 16#${spec:3:2} ))" \
+          "$(( 16#${spec:5:2} ))"
+        ;;
     '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-              red::rgb_as_ansi \
-                "$ansi_fgbg" \
-                "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
-                "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
-                "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
-              ;;
+        red::rgb_as_ansi \
+          "$ansi_fgbg" \
+          "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
+          "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
+          "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
+        ;;
   esac
 }
 
@@ -511,7 +619,7 @@ red::style_as_ps1() {
   for property in $1 default; do
     for style in ${RED_STYLES}; do
       local out
-      IFS='' read -r out < <(red::style_${style}_${property} 2>/dev/null)
+      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
       if [[ "$out" != '' ]]; then
         red::markup_as_ps1 "$out"
         return
@@ -581,9 +689,9 @@ red::module() {
   local exit="$?"
   module="$1"
   red::debug "module: $module"
-  #local out="$(red::module_${module} 2>/dev/null)"
+  #local out="$(red::module::${module} 2>/dev/null)"
   local out
-  IFS='' read -r out < <(red::module_${module} 2>/dev/null)
+  IFS='' read -r out < <(red::module::${module} 2>/dev/null)
   red::debug "   out: $out"
   [[ "$out" ]] || return $exit
   red::style_as_ansi $module
@@ -664,8 +772,8 @@ red::help() {
 }
 
 red::help::prompt() {
-  cat <<EOF | $RED_PAGER
-USAGE: source $RED_NAME [options]
+  red::pager <<EOF
+USAGE: source red [options]
 
 Sets the prompt in a bash session
 
@@ -766,3 +874,5 @@ red::prompt() {
 
   return $err
 }
+
+red "$@"

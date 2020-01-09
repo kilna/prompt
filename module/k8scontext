@@ -2,7 +2,7 @@
 
 which kubectl &>/dev/null || return 0
 
-__red_module_k8scontext() {
+red::module::k8scontext() {
   local out="$(kubectl config current-context 2>/dev/null)"
   [[ "$out" ]] || return
   if __red_unicode; then
@@ -13,7 +13,7 @@ __red_module_k8scontext() {
   echo -n "$out"
 }
 
-__red_style_default_k8scontext() {
+red::style::k8scontext() {
   echo -n '{fg:blue}'
 }
 

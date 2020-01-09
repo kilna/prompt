@@ -1,6 +1,6 @@
 #!/bin/bash
 
-__red_module_error() {
+red::module::error() {
   (( "$PS1_LAST_ERR" )) || return
   __red_ansi '{bg:#FF0}'
   if __red_unicode; then
@@ -13,7 +13,7 @@ __red_module_error() {
   __red_ansi_style
 }
 
-__red_style_default_error() {
+red::style::error() {
   echo -n '{fg:#700}'
 }
 
