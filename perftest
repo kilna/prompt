@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-run_time=5
+run_time="${1:-5}"
 
 func() {
   echo "contents!"
@@ -79,6 +79,15 @@ start=$SECONDS
 count=0
 while (( ( $SECONDS - $start ) < $run_time )); do
   eval 'export var=$(func)'
+  count=$(( $count + 1 ))
+done
+echo "Eval captured $count in $run_time seconds"
+
+
+start=$SECONDS
+count=0
+while (( ( $SECONDS - $start ) < $run_time )); do
+  eval 'func > /dev/null'
   count=$(( $count + 1 ))
 done
 echo "Evaled $count in $run_time seconds"
