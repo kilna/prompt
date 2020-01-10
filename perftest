@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 
-func() {
-  echo "contents!";
-}
+run_time=15
+
+func() { echo "contents!"; }
 
 start=$SECONDS
-for x in {1..50000}; do
-  var=$(func)
+count=0
+while (( ( $SECONDS - $start ) < $run_time )); do
+  var="$(func)"
+  count=$(( $count + 1 ))
 done
-echo capture: $(( $SECONDS - $start )) secs
+echo "Captured $count in $run_time seconds"
 
 start=$SECONDS
-for x in {1..50000}; do
+count=0
+while (( ( $SECONDS - $start ) < $run_time )); do
   IFS='' read var < <(func)
+  count=$(( $count + 1 ))
 done
-echo read: $(( $SECONDS - $start )) secs
+echo "Read $count in $run_time seconds"
 
