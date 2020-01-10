@@ -27,7 +27,7 @@ red() {
   eval "$( CFGFLAGS='-c|--config' CFGFILES=$HOME/.redrc? red::cfg "$@" )"
 
   # Process global options
-  RED_STYLES='default'
+  #RED_STYLES='default'
   #RED_STYLES='user default'
   #local user_styles=()
   local load_modules=()
@@ -40,8 +40,8 @@ red() {
       -a|--all-modules)  all_modules=1 ;;
       -d|--debug)        red::enable debug ;;
       -l|--powerline)    red::enable powerline ;;
-      -b|--bold)         red::enable bold ;;
-      -s|--style)        RED_STYLES="$2 ${RED_STYLES}"; shift ;;
+      #-b|--bold)         red::enable bold ;;
+      #-s|--style)        RED_STYLES="$2 ${RED_STYLES}"; shift ;;
       #-u|--user-style)   user_styles+=("$2"); shift ;;
       -c|--colors)       red::set ansi_color_depth "$2"; shift ;;
       *)                 ar+=("$1") ;;
@@ -98,14 +98,14 @@ red() {
     fi
   done
 
-  for style in ${RED_STYLES}; do
-    #[[ "$style" == 'user' ]] && continue
-    # red::debug "RED_STYLE: $style"
-    if ! source "${RED_ROOT}/style/${style}"; then
-      echo "Unable to open red style $RED_ROOT/style/$style" >&2
-      (( err++ ))
-    fi
-  done
+#  for style in ${RED_STYLES}; do
+#    #[[ "$style" == 'user' ]] && continue
+#    # red::debug "RED_STYLE: $style"
+#    if ! source "${RED_ROOT}/style/${style}"; then
+#      echo "Unable to open red style $RED_ROOT/style/$style" >&2
+#      (( err++ ))
+#    fi
+#  done
 
   # Process multiple verbs delimited by --
   while (( $# > 0 )); do
@@ -342,19 +342,19 @@ red::unload() {
   done
 }
 
-red::lookup() {
-  local funcname="red::${1//_/::}"
-  if typeset -F $funcname; then
-    $funcname
-    return $?
-  fi
-  local varname="red_${1//::/_}"
-  if typeset $varname; then
-    echo -n ${!varname}
-    return 0
-  fi
-  return 1
-}
+#red::lookup() {
+#  local funcname="red::${1//_/::}"
+#  if typeset -F $funcname; then
+#    $funcname
+#    return $?
+#  fi
+#  local varname="red_${1//::/_}"
+#  if typeset $varname; then
+#    echo -n ${!varname}
+#    return 0
+#  fi
+#  return 1
+#}
 
 red::funcs() {
   while IFS='' read line; do
@@ -397,32 +397,46 @@ red::powerline() {
   return 0
 }
 
-red::load_style() {
-  local file="$1"
-  local is_unicode=0
-  local code=''
-  while IFS='' read line; do
-    [[ "$line" == '#'* || "$line" =~ ^[[:space:]]*$ ]] && continue
-    if [[ "$line" != *':'* ]]; then
-      echo "Unable to parse line '$line' in file '$file'" >&2
-      continue
-    else
-      name="${line%%=*}"
-      name="${name## }"
-      name="${name%% }"
-      val="${line#*=}"
-      val="${val## }"
-      val="${val%% }"
-      #[[ "$val" == *'{u:'* ]] && is_unicode=1
-      #code+="export RED_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
-      red::set style_${name} "{$val}"
-    fi
-  done < "$1"
-  #if [[ ! red::unicode && is_unicode ]]; then
-  #  echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
-  #fi
-  #eval "$code"
-}
+export RED_SCHEME=''
+export RED_STYLE_DEFAULT=''
+export RED_STYLE_USER='{fg:cyan}'
+export RED_STYLE_HOST='{fg:magenta}'
+export RED_STYLE_FQDN='{fg:magenta}'
+export RED_STYLE_DIR='{fg:green}'
+export RED_STYLE_TIME='{fg:yellow}'
+export RED_STYLE_TIME12='{fg:yellow}'
+export RED_STYLE_DATE='{fg:yellow}'
+export RED_STYLE_AMPM='{fg:yellow}'
+export RED_STYLE_MODULE='{reverse}{space}'
+export RED_STYLE_MODULE_END='{space}{/reverse}'
+export RED_STYLE_MODULE_PAD='{space}'
+
+#red::load_style() {
+#  local file="$1"
+#  local is_unicode=0
+#  local code=''
+#  while IFS='' read line; do
+#    [[ "$line" == '#'* || "$line" =~ ^[[:space:]]*$ ]] && continue
+#    if [[ "$line" != *':'* ]]; then
+#      echo "Unable to parse line '$line' in file '$file'" >&2
+#      continue
+#    else
+#      name="${line%%=*}"
+#      name="${name## }"
+#      name="${name%% }"
+#      val="${line#*=}"
+#      val="${val## }"
+#      val="${val%% }"
+#      #[[ "$val" == *'{u:'* ]] && is_unicode=1
+#      #code+="export RED_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+#      red::set style_${name} "{$val}"
+#    fi
+#  done < "$1"
+#  #if [[ ! red::unicode && is_unicode ]]; then
+#  #  echo "File '$file' contains unicode style information but terminal is not UTF-8" >&2
+#  #fi
+#  #eval "$code"
+#}
 
 # Parse strings like '{tag}foo{/tag}' into a eval-able set statement to change
 # $@ to the string chunked into a list of '{tag}' 'foo' '{/tag}'
@@ -480,19 +494,19 @@ red::ansi_echo() {
   fi
 }
 
-red::style_as_ansi() {
-  red::check bold && red::red::markup_as_ansi -p '{bold}'
-  for property in "$1" 'default'; do
-    for style in ${RED_STYLES}; do
-      local out
-      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
-      if [[ "$out" != '' ]]; then
-        red::markup_as_ansi "$out"
-        return
-      fi
-    done
-  done
-}
+#red::style_as_ansi() {
+#  red::check bold && red::red::markup_as_ansi -p '{bold}'
+#  for property in "$1" 'default'; do
+#    for style in ${RED_STYLES}; do
+#      local out
+#      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
+#      if [[ "$out" != '' ]]; then
+#        red::markup_as_ansi "$out"
+#        return
+#      fi
+#    done
+#  done
+#}
 
 red::rgb_as_ansi() {
   # Rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
@@ -587,17 +601,22 @@ red::color_tag_as_ansi() {
 }
 
 red::markup_as_ansi() {
-  case "$1" in -p|--preparsed) : ;; *) eval "$(red::parse_markup "$@")";; esac
-  trap "$(shopt -p extglob)" RETURN
-  shopt -s extglob
+  local input
+  IFS='' read -r input
+  set -- "$@" "$input"
+  unset input
+  case "$1" in
+    -p|--preparsed) : ;; # Do nothing
+    *) eval "$(red::parse_markup "$@")";; # Chunk input by {tag}
+  esac
   while (( $# > 0 )); do
     arg="$1"
     shift
     [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)    red::style_as_ansi "${tag:6}";;
-      /style:*)   red::style_as_ansi "${tag:7}_end";;
+      style:*)    red::get style_"${tag:6}" | red::markup_as_ansi;;
+      /style:*)   red::get style_"${tag:7}_end" | red::markup_as_ansi;;
       eol)        red::ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
       clear)      red::ansi_echo '\e[H\e[2J';;
       reset)      red::ansi_echo '\e[0m';;
@@ -651,32 +670,38 @@ red::title_as_ps1() {
   fi
 }
 
-red::style_as_ps1() {
-  red::check bold && red::markup_as_ps1 '{bold}'
-  for property in $1 default; do
-    for style in ${RED_STYLES}; do
-      local out
-      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
-      if [[ "$out" != '' ]]; then
-        red::markup_as_ps1 "$out"
-        return
-      fi
-    done
-  done
-}
+#red::style_as_ps1() {
+#  red::check bold && red::markup_as_ps1i -p '{bold}'
+#  for property in $1 default; do
+#    for style in ${RED_STYLES}; do
+#      local out
+#      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
+#      if [[ "$out" != '' ]]; then
+#        red::markup_as_ps1 "$out"
+#        return
+#      fi
+#    done
+#  done
+#}
 
 red::markup_as_ps1() {
-  case "$1" in -p|--preparsed) : ;; *) eval "$(red::parse_markup "$@")";; esac
-  trap "$(shopt -p extglob)" RETURN
-  shopt -s extglob
+  local input
+  IFS='' read -r input
+  set -- "$@" "$input"
+  unset input
+  case "$1" in
+    -p|--preparsed) : ;; # Do nothing
+    *) eval "$(red::parse_markup "$@")";; # Chunk input by {tag}
+  esac
   while (( $# > 0 )); do
     arg="$1"
     shift
     [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)     red::style_as_ps1 "${tag:6}";;
-      /style:*)    red::style_as_ps1 "${tag:7}_end";;
+      style:*)     red::get style_"${tag:6}" | red::markup_as_ps1;;
+      /style:*)    red::get style_"${tag:7}_end" | red::markup_as_ps1;;
+      space)       echo -n ' ';;
       eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
@@ -697,36 +722,36 @@ red::markup_as_ps1() {
       /reverse)    echo -n '\[\e[27m\]';;
       hidden)      echo -n '\[\e[8m\]';;
       /hidden)     echo -n '\[\e[28m\]';;
-      user)        red::style_as_ps1 user
+      user)        red::get style_user | red::markup_as_ps1
                    echo -n '\u'
-                   red::style_as_ps1 user_end;;
-      dir)         red::style_as_ps1 dir
+                   red::get style_user_end | red::markup_as_ps1;;
+      dir)         red::get style_dir | red::markup_as_ps1
                    echo -n '\w'
-                   red::style_as_ps1 dir_end;;
-      basename)    red::style_as_ps1 basename
+                   red::get style_dir_end | red::markup_as_ps1;;
+      basename)    red::get style_basename | red::markup_as_ps1
                    echo -n '\W'
-                   red::style_as_ps1 basename_end;;
-      host)        red::style_as_ps1 host
+                   red::get style_basename_end | red::markup_as_ps1;;
+      host)        red::get style_host | red::markup_as_ps1
                    echo -n '\h'
-                   red::style_as_ps1 host_end;;
-      fqdn)        red::style_as_ps1 fqdn
+                   red::get style_host_end | red::markup_as_ps1;;
+      fqdn)        red::get style_fqdn | red::markup_as_ps1
                    echo -n '\H'
-                   red::style_as_ps1 fqdn_end;;
-      prompt)      red::style_as_ps1 prompt
+                   red::get style_fqdn_end | red::markup_as_ps1;;
+      prompt)      red::get style_prompt | red::markup_as_ps1
                    echo -n '\$'
-                   red::style_as_ps1 prompt_end;;
-      date)        red::style_as_ps1 date
+                   red::get style_prompt_end | red::markup_as_ps1;;
+      date)        red::get style_date | red::markup_as_ps1
                    echo -n '\d'
-                   red::style_as_ps1 date_end;;
-      time)        red::style_as_ps1 time
+                   red::get style_date_end | red::markup_as_ps1;;
+      time)        red::get style_time | red::markup_as_ps1
                    echo -n '\t'
-                   red::style_as_ps1 time_end;;
-      time12)      red::style_as_ps1 time12
+                   red::get style_time_end | red::markup_as_ps1;;
+      time12)      red::get style_time12 | red::markup_as_ps1
                    echo -n '\T'
-                   red::style_as_ps1 time12_end;;
-      ampm)        red::style_as_ps1 ampm
+                   red::get style_time12_end | red::markup_as_ps1;;
+      ampm)        red::get style_ampm | red::markup_as_ps1
                    echo -n '\@'
-                   red::style_as_ps1 ampm_end;;
+                   red::get style_ampm_end | red::markup_as_ps1;;
       module:*)    echo -n '`red::module '${tag:8}'`';;
       modules)     echo -n '`red::modules`';;
       modules:eol) echo -n '`red::modules -n`';;
@@ -792,8 +817,6 @@ red::ansi_color_depth() {
     *truecolor*|*24bit*) echo '24bit'; return;;
     *256*)               echo '256';   return;;
   esac
-  trap "$(shopt -p extglob)" RETURN
-  shopt -s extglob
   local t
   IFS='' read -r t < <(infocmp 2>/dev/null)
   if [[ "$t" == *+([[:space:]])@(set24f|setf24|setrgbf)=* ]]; then
