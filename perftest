@@ -1,5 +1,31 @@
 #!/usr/bin/env bash
 
+# Linux:
+# Ran 53231 in 10 seconds
+# Read (loop -r) 5685 in 10 seconds
+# Read (slurp) 11189 in 10 seconds
+# Read (slurp -r) 11107 in 10 seconds
+# Captured via `` 6779 in 10 seconds
+# Captured via $() 6651 in 10 seconds
+# Eval captured 6088 in 10 seconds
+# Evaled 51910 in 10 seconds
+# Piped 4557 in 10 seconds
+
+# GitBash Windows:
+# Ran 46315 in 10 seconds
+# Read (loop -r) 879 in 10 seconds
+# Read (slurp) 1065 in 10 seconds
+# Read (slurp -r) 1065 in 10 seconds
+# Captured via `` 551 in 10 seconds
+# Captured via $() 564 in 10 seconds
+# Eval captured 562 in 10 seconds
+# Evaled 44251 in 10 seconds
+# Piped 373 in 10 seconds
+
+# MacOS
+
+
+
 run_time="${1:-5}"
 
 func() {
