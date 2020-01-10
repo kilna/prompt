@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-run_time=15
+run_time=10
 
 func() { echo "contents!"; }
 
@@ -19,4 +19,12 @@ while (( ( $SECONDS - $start ) < $run_time )); do
   count=$(( $count + 1 ))
 done
 echo "Read $count in $run_time seconds"
+
+start=$SECONDS
+count=0
+while (( ( $SECONDS - $start ) < $run_time )); do
+  func | cat - >/dev/null
+  count=$(( $count + 1 ))
+done
+echo "Piped $count in $run_time seconds"
 
