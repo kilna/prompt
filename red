@@ -170,8 +170,8 @@ red::cfg() {
 
   # Resolve passed in config file parameters into cfgfiles array
   ar=()
-  IFS=:  read -a cfgfiles <<< "$CFGFILES"
-  IFS=\| read -a cfgflags <<< "$CFGFLAGS"
+  IFS=:   read -a cfgfiles <<< "$CFGFILES"
+  IFS='|' read -a cfgflags <<< "$CFGFLAGS"
   local match
   while (( $# > 0 )); do
     a="$1"; shift
@@ -244,24 +244,26 @@ red::remap_ansi_colors() {
     fi
     local rgb_s="${rgb:0:2}/${rgb:2:2}/${rgb:4:2}"
     case "$color" in
-      *s)        local c="${color%s}" # reds -> red, brightred
-                 red::remap_ansi_colors $c=$rgb bright$c=$rgb;;
-      blackbg)   red::remap_ansi_colors black=$rgb bg=$rgb;;
-      whitebg)   red::remap_ansi_colors brightwhite=$rgb bg=$rgb;;
-      blackfg)   red::remap_ansi_colors black=$rgb fg=$rgb;;
-      whitefg)   red::remap_ansi_colors brightwhite=$rgb fg=$rgb;;
-      fg)        if [[ -n "$ITERM_SESSION_ID" ]]; then
-                   printf $it Pg $rgb
-                   printf $it Pi $rgb
-                 else
-                   printf $vt 10 $rgb_s
-                 fi;;
-      bg)        if [[ -n "$ITERM_SESSION_ID" ]]; then
-                   printf $it Ph $rgb
-                 else
-                   printf $vt 11 $rgb_s
-                   [[ "${TERM%%-*}" == "rxvt" ]] && printf $vt 708 $rgb_s
-                 fi;;
+       *s)              local c="${color%s}" # reds -> red, brightred
+                        red::remap_ansi_colors $c=$rgb bright$c=$rgb;;
+       blackbg)         red::remap_ansi_colors black=$rgb bg=$rgb;;
+       whitebg)         red::remap_ansi_colors brightwhite=$rgb bg=$rgb;;
+       blackfg)         red::remap_ansi_colors black=$rgb fg=$rgb;;
+       whitefg)         red::remap_ansi_colors brightwhite=$rgb fg=$rgb;;
+       fg)              if [[ -n "$ITERM_SESSION_ID" ]]; then
+                          printf $it Pg $rgb
+                          printf $it Pi $rgb
+                        else
+                          printf $vt 10 $rgb_s
+                        fi;;
+       bg)              if [[ -n "$ITERM_SESSION_ID" ]]; then
+                          printf $it Ph $rgb
+                        else
+                          printf $vt 11 $rgb_s
+                          if [[ "${TERM%%-*}" == "rxvt" ]]; then
+                            printf $vt 708 $rgb_s
+                          fi
+                        fi;;
       [0-9]+)           printf $ct $color $rgb_s;;
       black)            printf $ct  0 $rgb_s;;
       red)              printf $ct  1 $rgb_s;;
@@ -482,9 +484,10 @@ red::parse_markup() {
       fi
     done
   done
-  red::esc set -- "${ar[@]}" # Produce an eval-able set command with new desired $@
+  red::esc set -- "${ar[@]}" # Make eval-able set command for new desired $@
 }
 
+# Renders escaped ANSI as actual ANSI, if the terminal is ANSI enabled
 red::ansi_echo() {
   red::check ansi_color_depth 0 0 && return
   if (( "${BASH_VERSINFO[0]}" > 3 )); then
@@ -494,34 +497,56 @@ red::ansi_echo() {
   fi
 }
 
-#red::style_as_ansi() {
-#  red::check bold && red::red::markup_as_ansi -p '{bold}'
-#  for property in "$1" 'default'; do
-#    for style in ${RED_STYLES}; do
-#      local out
-#      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
-#      if [[ "$out" != '' ]]; then
-#        red::markup_as_ansi "$out"
-#        return
-#      fi
-#    done
-#  done
-#}
+red::color_as_e_ansi() {
 
-red::rgb_as_ansi() {
-  # Rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
-  # https://docs.google.com/spreadsheets/d/1n4zg5OXYC0hBdRKBb1clx4t2HSx_cu_iiot6GYpgh1c/
-  local ansi_fgbg="$1" # ANSI fg/bg code (either 3 or 4)
-  local r="$2"
-  local g="$3"
-  local b="$4"
+  # If we're foreground $a is set to 3, if background it's set to 4
+  local a='3'; if [[ "${1:0:2}" == 'bg' ]]; then a='4'; fi
+
+  local spec="${1:3}"
+
+  local r g b
+
+  case "$spec" in
+    black)            echo -n '\e['"${a}0m";;
+    red)              echo -n '\e['"${a}1m";;
+    green)            echo -n '\e['"${a}2m";;
+    yellow)           echo -n '\e['"${a}3m";;
+    blue)             echo -n '\e['"${a}4m";;
+    magenta)          echo -n '\e['"${a}5m";;
+    cyan)             echo -n '\e['"${a}6m";;
+    white|lightgray)  echo -n '\e['"${a}7m";;
+    brightblack|gray) echo -n '\e['"${a}8m";;
+    brightred)        echo -n '\e['"${a}9m";;
+    brightgreen)      echo -n '\e['"${a}10m";;
+    brightyellow)     echo -n '\e['"${a}11m";;
+    brightblue)       echo -n '\e['"${a}12m";;
+    brightmagenta)    echo -n '\e['"${a}13m";;
+    brightcyan)       echo -n '\e['"${a}14m";;
+    brightwhite)      echo -n '\e['"${a}15m";;
+    +([0-9]))         echo -n '\e['"${a}8;5;${spec}m";;
+    +([0-9]),+([0-9]),+([0-9]))
+                      local rgb=( ${spec//,/ } )
+                      r="${rgb[0]}"; g="${rgb[1]}"; b="${rgb[2]}";;
+    '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                      r="$(( 16#${spec:1:2} ))"
+                      g="$(( 16#${spec:3:2} ))"
+                      b="$(( 16#${spec:5:2} ))";;
+    '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
+                      r="$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))"
+                      g="$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))"
+                      b="$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))";;
+  esac
+
+  [[ "$r$g$b" == '' ]] && return
 
   # If we're in 24 bit mode we don't have to round, return using RGB syntax
   if red::check ansi_color_depth '24bit'; then
-    echo -n '\e['"${ansi_fgbg}8;2;${r};${g};${b}m"
+    echo -n '\e['"${a}8;2;${r};${a};${b}m"
     return
   fi
 
+  # Below rounds to the nearest ANSI 216 color cube or 24 grayscale value. See:
+  # https://docs.google.com/spreadsheets/d/1n4zg5OXYC0hBdRKBb1clx4t2HSx_cu_iiot6GYpgh1c/
   local min=''
   local max=''
   local total=0
@@ -554,57 +579,24 @@ red::rgb_as_ansi() {
     ))
   fi
 
-  echo -n '\e['"${ansi_fgbg}8;5;${idx}m"
+  echo -n '\e['"${a}8;5;${idx}m"
 }
 
-red::color_tag_as_ansi() {
-  # If we're foreground $g is set to 3, if background it's set to 4
-  local ansi_fgbg='3'; if [[ "${1:0:2}" == 'bg' ]]; then ansi_fgbg='4'; fi
-  local spec="${1:3}"
-  #red::debug "COLOR TAG: $1 FG/BG: $g SPEC: $spec"
-  case "$spec" in
-    black)            echo -n '\e['"${ansi_fgbg}0m";;
-    red)              echo -n '\e['"${ansi_fgbg}1m";;
-    green)            echo -n '\e['"${ansi_fgbg}2m";;
-    yellow)           echo -n '\e['"${ansi_fgbg}3m";;
-    blue)             echo -n '\e['"${ansi_fgbg}4m";;
-    magenta)          echo -n '\e['"${ansi_fgbg}5m";;
-    cyan)             echo -n '\e['"${ansi_fgbg}6m";;
-    white|lightgray)  echo -n '\e['"${ansi_fgbg}7m";;
-    brightblack|gray) echo -n '\e['"${ansi_fgbg}8m";;
-    brightred)        echo -n '\e['"${ansi_fgbg}9m";;
-    brightgreen)      echo -n '\e['"${ansi_fgbg}10m";;
-    brightyellow)     echo -n '\e['"${ansi_fgbg}11m";;
-    brightblue)       echo -n '\e['"${ansi_fgbg}12m";;
-    brightmagenta)    echo -n '\e['"${ansi_fgbg}13m";;
-    brightcyan)       echo -n '\e['"${ansi_fgbg}14m";;
-    brightwhite)      echo -n '\e['"${ansi_fgbg}15m";;
-    +([0-9]))
-        echo -n '\e['"${ansi_fgbg}8;5;${spec}m";;
-    +([0-9]),+([0-9]),+([0-9]))
-        red::rgb_as_ansi "$ansi_fgbg" ${spec//,/ };;
-    '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-        red::rgb_as_ansi \
-          "$ansi_fgbg" \
-          "$(( 16#${spec:1:2} ))" \
-          "$(( 16#${spec:3:2} ))" \
-          "$(( 16#${spec:5:2} ))"
-        ;;
-    '#'[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f])
-        red::rgb_as_ansi \
-          "$ansi_fgbg" \
-          "$(( ( 16#${spec:1:1} * 16 ) + 16#${spec:1:1} ))" \
-          "$(( ( 16#${spec:2:1} * 16 ) + 16#${spec:2:1} ))" \
-          "$(( ( 16#${spec:3:1} * 16 ) + 16#${spec:3:1} ))"
-        ;;
-  esac
+red::style_ansi() {
+  local style="$1"
+  IFS='' read -r markup < <(red::get style_$1)
+  red::render_ansi "$markup"
 }
 
-red::markup_as_ansi() {
-  local input
-  IFS='' read -r input
-  set -- "$@" "$input"
-  unset input
+red::style_wrap_ansi() {
+  local style="$1"
+  local content="$2"
+  red::style_ansi "${style}"
+  echo -n "$content"
+  red::style_ansi "${style}_end"
+}
+
+red::render_ansi() {
   case "$1" in
     -p|--preparsed) : ;; # Do nothing
     *) eval "$(red::parse_markup "$@")";; # Chunk input by {tag}
@@ -612,17 +604,17 @@ red::markup_as_ansi() {
   while (( $# > 0 )); do
     arg="$1"
     shift
-    [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
+    [[ "$arg" != '{'*'}' ]] && echo -n "${arg//\\/\\\\}" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)    red::get style_"${tag:6}" | red::markup_as_ansi;;
-      /style:*)   red::get style_"${tag:7}_end" | red::markup_as_ansi;;
+      style:*)    red::style_e_ansi "${tag:6}";;
+      /style:*)   red::style_e_ansi "${tag:7}_end";;
+      space)      red::ansi_echo ' ';;
       eol)        red::ansi_echo '\n\e[0m';; # Handy when bash eats a trailing newline
       clear)      red::ansi_echo '\e[H\e[2J';;
       reset)      red::ansi_echo '\e[0m';;
-      fg:*|bg:*)  IFS='' read -d $'\0' -r color < <(red::color_tag_as_ansi $tag)
-                  #red::debug "COLOR: $color"
-                  red::ansi_echo "$color";;
+      fg:*|bg:*)  IFS='' read -r e_ansi < <(red::color_as_e_ansi $tag)
+                  red::ansi_echo "$e_ansi";;
       bold)       red::ansi_echo '\e[1m';;
       /bold)      red::ansi_echo '\e[21m';;
       dim)        red::ansi_echo '\e[2m';;
@@ -639,8 +631,7 @@ red::markup_as_ansi() {
       /reverse)   red::ansi_echo '\e[27m';;
       hidden)     red::ansi_echo '\e[8m';;
       /hidden)    red::ansi_echo '\e[28m';;
-      space)      echo -n ' ';;
-      *)          echo -n "{$tag}";;
+      *)          "${arg}";;
     esac
   done
 }
@@ -657,7 +648,7 @@ red::title() {
   return $last_err # Needed by red::modules to show error
 }
 
-red::title_as_ps1() {
+red::title_ps1() {
   if [[ "$RED_TITLE_MODE" != 'disabled' ]]; then
     echo -n '\[\e]0;\]'
     case "$RED_TITLE_MODE" in
@@ -670,25 +661,21 @@ red::title_as_ps1() {
   fi
 }
 
-#red::style_as_ps1() {
-#  red::check bold && red::markup_as_ps1i -p '{bold}'
-#  for property in $1 default; do
-#    for style in ${RED_STYLES}; do
-#      local out
-#      IFS='' read -r out < <(red::style::${style}_${property} 2>/dev/null)
-#      if [[ "$out" != '' ]]; then
-#        red::markup_as_ps1 "$out"
-#        return
-#      fi
-#    done
-#  done
-#}
+red::style_ps1() {
+  local style="$1"
+  IFS='' read -r markup < <(red::get style_$1)
+  red::render_ps1 "$markup"
+}
 
-red::markup_as_ps1() {
-  local input
-  IFS='' read -r input
-  set -- "$@" "$input"
-  unset input
+red::style_wrap_ps1() {
+  local style="$1"
+  local content="$2"
+  red::style_ps1 "${style}"
+  echo -n "$content"
+  red::style_ps1 "${style}_end"
+}
+
+red::render_ps1() {
   case "$1" in
     -p|--preparsed) : ;; # Do nothing
     *) eval "$(red::parse_markup "$@")";; # Chunk input by {tag}
@@ -699,13 +686,13 @@ red::markup_as_ps1() {
     [[ "$arg" != '{'*'}' ]] && echo -n "$arg" && continue
     tag="${arg:1:$(( ${#arg} - 2 ))}"
     case "$tag" in
-      style:*)     red::get style_"${tag:6}" | red::markup_as_ps1;;
-      /style:*)    red::get style_"${tag:7}_end" | red::markup_as_ps1;;
+      style:*)     red::style_ps1 "${tag:6}";;
+      /style:*)    red::style_ps1 "${tag:7}_end";;
       space)       echo -n ' ';;
-      eol)         echo -n '\n\[\e[0m\]';; # Handy when bash eats a trailing newline
+      eol)         echo -n '\n\[\e[0m\]';;
       clear)       echo -n '\[\e[H\e[2J\]';;
       reset)       echo -n '\[\e[0m\]';;
-      fg:*|bg:*)   echo -n '\['; red::color_tag_as_ansi "$tag"; echo -n '\]';;
+      fg:*|bg:*)   echo -n '\['; red::color_as_e_ansi "$tag"; echo -n '\]';;
       bold)        echo -n '\[\e[1m\]';;
       /bold)       echo -n '\[\e[21m\]';;
       dim)         echo -n '\[\e[2m\]';;
@@ -722,36 +709,16 @@ red::markup_as_ps1() {
       /reverse)    echo -n '\[\e[27m\]';;
       hidden)      echo -n '\[\e[8m\]';;
       /hidden)     echo -n '\[\e[28m\]';;
-      user)        red::get style_user | red::markup_as_ps1
-                   echo -n '\u'
-                   red::get style_user_end | red::markup_as_ps1;;
-      dir)         red::get style_dir | red::markup_as_ps1
-                   echo -n '\w'
-                   red::get style_dir_end | red::markup_as_ps1;;
-      basename)    red::get style_basename | red::markup_as_ps1
-                   echo -n '\W'
-                   red::get style_basename_end | red::markup_as_ps1;;
-      host)        red::get style_host | red::markup_as_ps1
-                   echo -n '\h'
-                   red::get style_host_end | red::markup_as_ps1;;
-      fqdn)        red::get style_fqdn | red::markup_as_ps1
-                   echo -n '\H'
-                   red::get style_fqdn_end | red::markup_as_ps1;;
-      prompt)      red::get style_prompt | red::markup_as_ps1
-                   echo -n '\$'
-                   red::get style_prompt_end | red::markup_as_ps1;;
-      date)        red::get style_date | red::markup_as_ps1
-                   echo -n '\d'
-                   red::get style_date_end | red::markup_as_ps1;;
-      time)        red::get style_time | red::markup_as_ps1
-                   echo -n '\t'
-                   red::get style_time_end | red::markup_as_ps1;;
-      time12)      red::get style_time12 | red::markup_as_ps1
-                   echo -n '\T'
-                   red::get style_time12_end | red::markup_as_ps1;;
-      ampm)        red::get style_ampm | red::markup_as_ps1
-                   echo -n '\@'
-                   red::get style_ampm_end | red::markup_as_ps1;;
+      user)        red::style_wrap_ps1 'user' '\u';;
+      dir)         red::style_wrap_ps1 'dir' '\w';;
+      basename)    red::style_wrap_ps1 'basename' '\W';;
+      host)        red::style_wrap_ps1 'host' '\h';;
+      fqdn)        red::style_wrap_ps1 'fqdn' '\H';;
+      prompt)      red::style_wrap_ps1 'prompt' '\$';;
+      date)        red::style_wrap_ps1 'date' '\d';;
+      time)        red::style_wrap_ps1 'time' '\t';;
+      time12)      red::style_wrap_ps1 'time12' '\T';;
+      ampm)        red::style_wrap_ps1 'ampm' '\@';;
       module:*)    echo -n '`red::module '${tag:8}'`';;
       modules)     echo -n '`red::modules`';;
       modules:eol) echo -n '`red::modules -n`';;
@@ -770,11 +737,11 @@ red::module() {
   IFS='' read -r out < <(red::module::${module} 2>/dev/null)
   red::debug "   out: $out"
   [[ "$out" ]] || return $exit
-  red::style_as_ansi $module
-  red::style_as_ansi module
+  red::style_ansi $module
+  red::style_ansi module
   echo -n "$out"
-  red::style_as_ansi module_end
-  red::style_as_ansi ${module}_end
+  red::style_ansi module_end
+  red::style_ansi ${module}_end
   return $exit
 }
 
@@ -796,15 +763,15 @@ red::modules() {
     local module_out
     IFS='' read -r module_out < <(red::module $module)
     [[ "$module_out" ]] || continue
-    (( enabled_modules++ )) && red::style_as_ansi 'module_pad'
+    (( enabled_modules++ )) && red::style_ansi 'module_pad'
     echo -n "$module_out"
-    red::markup_as_ansi -p '{reset}'
+    red::render_ansi -p '{reset}'
   done
   if [[ "$enabled_modules" > 0 ]]; then
     if [[ "$newline" == 1 ]]; then
-      red::markup_as_ansi -p '{eol}'
+      red::render_ansi -p '{eol}'
     elif [[ "$pad"     == 1 ]]; then
-      red::style_as_ansi 'module_pad'
+      red::style_ansi 'module_pad'
     fi
   fi
   local err="$RED_LAST_ERR"
@@ -817,28 +784,34 @@ red::ansi_color_depth() {
     *truecolor*|*24bit*) echo '24bit'; return;;
     *256*)               echo '256';   return;;
   esac
-  local t
-  IFS='' read -r t < <(infocmp 2>/dev/null)
-  if [[ "$t" == *+([[:space:]])@(set24f|setf24|setrgbf)=* ]]; then
+  local infocmp
+  IFS='' read -r infocmp < <(infocmp 2>/dev/null)
+  if [[ "$infocmp" == *+([[:space:]])@(set24f|setf24|setrgbf)=* ]]; then
     echo '24bit'
     return
   fi
+  local ansi
+  IFS='' read -r ansi < <(printf '\e]4;1;?\a')
   local REPLY
-  echo -e -n '\e]4;1;?\a'
-  read -p "$(echo -e -n '\e]4;1;?\a')" -d $'\a' -s -t 0.1 </dev/tty
+  read -p "$ansi" -d $'\a' -s -t 0.1 </dev/tty
   if ! [[ -z "$REPLY" ]]; then
     local colors=''
     for idx in 255 15 7; do
-      printf '\e]4;%d;?\a' $idx
-      read -d $'\a' -s -t 0.1 </dev/tty
+      IFS='' read -r ansi < <(printf '\e]4;%d;?\a' $idx)
+      read -p "$ansi" -d $'\a' -s -t 0.1 </dev/tty
       if ! [[ -z "$REPLY" ]]; then
         echo $(( idx + 1 ))
         return
       fi
     done
   fi
-  IFS='' read -r t < <(tput colors 2>/dev/null)
-  (( t == 8 || t == 16 || t == 256 )) && echo "$t"
+  local tput
+  IFS='' read -r tput < <(tput colors 2>/dev/null)
+  if (( tput == 8 || tput == 16 || tput == 256 )); then
+    echo "$tput"
+    return
+  fi
+  echo 0
 }
 
 red::help() {
@@ -936,10 +909,10 @@ red::prompt() {
   RED_TITLE_FORMAT="${RED_TITLE_FORMAT:-\\u@\\h \\w}"
   red::debug "RED_TITLE_FORMAT: $RED_TITLE_FORMAT"
 
-  IFS='' read -r -d $'\0' title < <(red::title_as_ps1)
+  IFS='' read -r -d $'\0' title < <(red::title_ps1)
   red::debug "title: $title"
   red::debug "prompt_markup: $prompt_markup"
-  IFS='' read -r -d $'\0' prompt < <(red::markup_as_ps1 "$prompt_markup")
+  IFS='' read -r -d $'\0' prompt < <(red::render_ps1 "$prompt_markup")
   red::debug "prompt: $prompt"
   export PS1="$title$prompt"
   (( err+="$?" ))
