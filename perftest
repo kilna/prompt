@@ -23,8 +23,15 @@
 # Piped 373 in 10 seconds
 
 # MacOS
-
-
+# Ran 97267 in 10 seconds
+# Read (loop -r) 7535 in 10 seconds
+# Read (slurp) 13916 in 10 seconds
+# Read (slurp -r) 14105 in 10 seconds
+# Captured via `` 11615 in 10 seconds
+# Captured via $() 11864 in 10 seconds
+# Eval captured 11206 in 10 seconds
+# Evaled 88381 in 10 seconds
+# Piped 6733 in 10 seconds
 
 run_time="${1:-5}"
 
