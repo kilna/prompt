@@ -1,19 +1,17 @@
 #!/bin/bash
 
-which kubectl &>/dev/null || return 0
+if ! which kubectl &>/dev/null; then
+  red::set module_k8scontext_error "Unable to locate kubectl"
+  return 1
+fi
 
 red::module::k8scontext() {
-  local out="$(kubectl config current-context 2>/dev/null)"
-  [[ "$out" ]] || return
-  if __red_unicode; then
-    echo -n "☸ "
-  else
-    echo -n 'k8s '
-  fi
-  echo -n "$out"
-}
-
-red::style::k8scontext() {
-  echo -n '{fg:blue}'
+  IFS='' read -r context < <(kubectl config current-context 2>/dev/null)
+  [[ "$context" ]] || return
+  red::set module_k8scontext_content "$context"
+  red::set module_k8scontext_color '#06F'
+  red::set module_k8scontext_prefix_unicode '⎈'
+  red::enable module_k8scontext_prefix_unicode_wide
+  red::set module_k8scontext_prefix_ascii 'k8s'
 }
 

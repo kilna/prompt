@@ -1,19 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 red::module::error() {
-  (( "$PS1_LAST_ERR" )) || return
-  __red_ansi '{bg:#FF0}'
-  if __red_unicode; then
-    __red_ansi "⚠ "
-  else
-    echo -n 'err'
-  fi
-  __red_ansi '{bg:#000}'
-  echo -n " $PS1_LAST_ERR"
-  __red_ansi_style
-}
 
-red::style::error() {
-  echo -n '{fg:#700}'
+  (( "$RED_LAST_EXIT" )) || return
+
+  red::set module_error_content "$RED_LAST_EXIT"
+  red::set module_error_color '#F00'
+  red::set module_error_prefix_color '#FF0'
+  red::set module_error_prefix_unicode '⚠'
+  red::enable module_error_prefix_unicode_wide
+  red::set module_error_prefix_ascii "err"
+
 }
 

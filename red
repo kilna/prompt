@@ -7,17 +7,17 @@ fi
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   cat <<EOF >&2
-This script is meant to be added into a Bash shell session via:
+This script is meant to be added into a Bash shell session.
 
-source $RED_SCRIPT
+source /path/to/red
 
 After loading via source, you can use 'red reload' to reload.
 EOF
   exit 1
 fi
 
-RED_ROOT="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD)"
-RED_SCRIPT="${RED_ROOT}/$(basename ${BASH_SOURCE[0]})"
+red_root="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD)"
+red_script="${red_root}/$(basename ${BASH_SOURCE[0]})"
 
 trap "$(shopt -p extglob)" RETURN
 shopt -s extglob
@@ -27,21 +27,22 @@ red() {
   eval "$( CFGFLAGS='-c|--config' CFGFILES=$HOME/.redrc? red::cfg "$@" )"
 
   # Process global options
-  #RED_STYLES='default'
-  #RED_STYLES='user default'
+  #red_styleS='default'
+  #red_styleS='user default'
   #local user_styles=()
-  local load_modules=()
+  local load_modules=(error)
   local show_help=0
   local ar=()
   while (( $# > 0 )); do
     case "$1" in
       -h|--help)         show_help=1 ;;
       -m|--module)       load_modules+=("$2"); shift ;;
-      -a|--all-modules)  all_modules=1 ;;
+      #-a|--all-modules)  all_modules=1 ;;
       -d|--debug)        red::enable debug ;;
       -l|--powerline)    red::enable powerline ;;
+      -w|--doublewide)   red::enable doubelwide ;;
       #-b|--bold)         red::enable bold ;;
-      #-s|--style)        RED_STYLES="$2 ${RED_STYLES}"; shift ;;
+      #-s|--style)        red_styles="$2 ${red_styles}"; shift ;;
       #-u|--user-style)   user_styles+=("$2"); shift ;;
       -c|--colors)       red::set ansi_color_depth "$2"; shift ;;
       *)                 ar+=("$1") ;;
@@ -52,25 +53,23 @@ red() {
   unset ar
   if (( $show_help )); then set -- help "$@"; fi
 
-  #typeset -x | grep RED_
-
-  if [[ "$RED_ANSI_COLOR_DEPTH" == '' ]]; then
-    IFS='' read -r RED_ANSI_COLOR_DEPTH < <(red::ansi_color_depth)
+  if [[ "$red_ansi_color_depth" != +(0|8|16|256|24bit) ]]; then
+    IFS='' read -r red_ansi_color_depth < <(red::ansi_color_depth)
   fi
 
-  #red::debug "RED_ROOT: $RED_ROOT"
-  #red::debug "RED_SCRIPT: $RED_SCRIPT"
+  #red::debug "red_root: $red_root"
+  #red::debug "red_script: $red_script"
 
-  if [[ "$all_modules" ]]; then
-    load_modules=()
-    for module_path in $RED_ROOT/module/*; do
-      load_modules+=("${module_path##*/}")
-    done
-  fi
-  unset all_modules
+  #if [[ "$all_modules" ]]; then
+  #  load_modules=()
+  #  for module_path in $red_root/module/*; do
+  #    load_modules+=("${module_path##*/}")
+  #  done
+  #fi
+  #unset all_modules
 
   for func in $(red::funcs); do
-    case "$func" in red::module::*|red::style::*)
+    case "$func" in red::module::*)
       red::debug "Unsetting $func"
       unset -f $func;;
     esac
@@ -83,26 +82,27 @@ red() {
   #done
   #unset user_styles
 
-  err=0
-
-  RED_MODULES=''
   for module in "${load_modules[@]}"; do
     red::debug "Loading module: $module"
-    if ! source "${RED_ROOT}/module/${module}"; then
-      echo "Unable to open red module $RED_ROOT/modules/$module" >&2
-      (( err++ ))
+    source "${red_root}/module/${module}"
+    IFS='' read -r error < <(red::get module_${module}_error)
+    if [[ "$error" == '' ]] && ! typeset -F red::module::$module &>/dev/null
+    then
+      error="Function red::module::$module is missing"
     fi
-    if typeset -F red::module::$module &>/dev/null; then
-      red::debug "Module $module loaded successfully"
-      RED_MODULES+="$module "
+    if [[ "$error" ]]; then
+      echo "Error loading module $module: $error" >&2
+      return 1
     fi
+    red::add loaded_modules $module
+    red::debug "Module $module loaded successfully"
   done
 
-#  for style in ${RED_STYLES}; do
+#  for style in ${red_styleS}; do
 #    #[[ "$style" == 'user' ]] && continue
-#    # red::debug "RED_STYLE: $style"
-#    if ! source "${RED_ROOT}/style/${style}"; then
-#      echo "Unable to open red style $RED_ROOT/style/$style" >&2
+#    # red::debug "red_style: $style"
+#    if ! source "${red_root}/style/${style}"; then
+#      echo "Unable to open red style $red_root/style/$style" >&2
 #      (( err++ ))
 #    fi
 #  done
@@ -287,32 +287,37 @@ red::remap_ansi_colors() {
 }
 
 red::set() {
-  IFS='' read -r varname < <(red::uc RED_$1)
-  export $varname="$2"
+  export red_$1="$2"
 }
 
 red::enable() {
-  IFS='' read -r varname < <(red::uc RED_$1)
-  export $varname=1
+  export red_$1=1
 }
 
 red::disable() {
-  IFS='' read -r varname < <(red::uc RED_$1)
-  export $varname=0;
+  export red_$1=0;
+}
+
+red::add() {
+  IFS='' read -r typeset < <(typeset -axp red_$1)
+  if [[ "$typeset" == '' ]]; then
+    export red_$1=("$2")
+  else
+    red_$1+=("$2")
+  fi
 }
 
 red::unset() {
-  IFS='' read -r varname < <(red::uc RED_$1)
-  unset "$varname";
+  unset red_$1;
 }
 
 red::get() {
-  IFS='' read -r varname < <(red::uc RED_$1)
+  local varname=red_$1
   echo -n "${!varname}"
 }
 
 red::check() {
-  IFS='' read -r varname < <(red::uc RED_$1)
+  local varname=red_$1
   local compareval="${2:-1}"
   local defaultval="${3:-}"
   [[ "${!varname}" == '' && "$defaultval" == "$compareval" ]] && return 0
@@ -322,18 +327,18 @@ red::check() {
 
 red::reload() {
   red::unload
-  red::debug "Running $RED_SCRIPT"
-  if [[ -e $RED_SCRIPT ]]; then
-    source $RED_SCRIPT "$@"
+  red::debug "Running $red_script"
+  if [[ -e $red_script ]]; then
+    source $red_script "$@"
   else
-    echo "Unable to find RED_SCRIPT: $RED_SCRIPT" >&2
+    echo "Unable to find red_script: $red_script" >&2
     return 1
   fi
 }
 
 red::unload() {
-  if [[ "$RED_PS1_ORIG" != '' ]]; then export PS1="$RED_PS1_ORIG"; fi
-  local debug="${RED_DEBUG:-0}"
+  if [[ "$red_ps1_orig" != '' ]]; then export PS1="$red_ps1_orig"; fi
+  local debug="${red_debug:-0}"
   for var in $(red::vars); do
     (( $debug )) && echo "Unsetting \$${var}" >&2
     unset $var &>/dev/null
@@ -375,7 +380,7 @@ red::vars() {
     local f=($line)
     if [[ "${f[0]}" == 'declare' &&
           "${f[1]}" == '-x' &&
-          "${f[2]}" == 'RED_'*'='
+          "${f[2]}" == 'red_'*'='
        ]]; then
       echo -n "${f[2]%%=*} "
     fi
@@ -399,19 +404,19 @@ red::powerline() {
   return 0
 }
 
-export RED_SCHEME=''
-export RED_STYLE_DEFAULT=''
-export RED_STYLE_USER='{fg:cyan}'
-export RED_STYLE_HOST='{fg:magenta}'
-export RED_STYLE_FQDN='{fg:magenta}'
-export RED_STYLE_DIR='{fg:green}'
-export RED_STYLE_TIME='{fg:yellow}'
-export RED_STYLE_TIME12='{fg:yellow}'
-export RED_STYLE_DATE='{fg:yellow}'
-export RED_STYLE_AMPM='{fg:yellow}'
-export RED_STYLE_MODULE='{reverse}{space}'
-export RED_STYLE_MODULE_END='{space}{/reverse}'
-export RED_STYLE_MODULE_PAD='{space}'
+export red_scheme=''
+export red_style_default=''
+export red_style_user='{fg:cyan}'
+export red_style_host='{fg:magenta}'
+export red_style_fqdn='{fg:magenta}'
+export red_style_dir='{fg:green}'
+export red_style_time='{fg:yellow}'
+export red_style_time12='{fg:yellow}'
+export red_style_date='{fg:yellow}'
+export red_style_ampm='{fg:yellow}'
+export red_style_module='{reverse}{space}'
+export red_style_module_end='{space}{/reverse}'
+export red_style_module_pad='{space}'
 
 #red::load_style() {
 #  local file="$1"
@@ -430,7 +435,7 @@ export RED_STYLE_MODULE_PAD='{space}'
 #      val="${val## }"
 #      val="${val%% }"
 #      #[[ "$val" == *'{u:'* ]] && is_unicode=1
-#      #code+="export RED_STYLE_${name^^}='${val//\'/\\\'}'"$'\n';
+#      #code+="export red_style_${name^^}='${val//\'/\\\'}'"$'\n';
 #      red::set style_${name} "{$val}"
 #    fi
 #  done < "$1"
@@ -636,30 +641,33 @@ red::render_ansi() {
   done
 }
 
-red::title() {
+red::pre_prompt() {
   local last_err="$?" # Cache last command's error...
-  if [[ "$RED_TITLE" ]]; then
-    case "$RED_TITLE_MODE" in
-      prepend)     echo -n "$RED_TITLE"' - ';;
-      append)      echo -n ' - '"$RED_TITLE";;
-      interpolate) echo -n "$RED_TITLE";;
+  if [[ "$red_title" ]]; then
+    case "$red_title_mode" in
+      prepend)     echo -n "$red_title"' - ';;
+      append)      echo -n ' - '"$red_title";;
+      interpolate) echo -n "$red_title";;
     esac
   fi
   return $last_err # Needed by red::modules to show error
 }
 
-red::title_ps1() {
-  if [[ "$RED_TITLE_MODE" != 'disabled' ]]; then
-    echo -n '\[\e]0;\]'
-    case "$RED_TITLE_MODE" in
-      static)      echo -n "$RED_TITLE_FORMAT";;
-      prepend)     echo -n '`red::title`'"$RED_TITLE_FORMAT";;
-      append)      echo -n "$RED_TITLE_FORMAT"'`red::title`';;
-      interpolate) echo -n "${RED_TITLE_FORMAT//\\z/'`red::title`'}";;
-    esac
-    echo -n '\a'
-  fi
+red::post_prompt() {
 }
+
+#red::title_ps1() {
+#  if [[ "$red_title_mode" != 'disabled' ]]; then
+#    echo -n '\[\e]0;\]'
+#    case "$red_title_mode" in
+#      static)      echo -n "$red_title_format";;
+#      prepend)     echo -n '`red::title`'"$red_title_format";;
+#      append)      echo -n "$red_title_format"'`red::title`';;
+#      interpolate) echo -n "${red_title_format//\\z/'`red::title`'}";;
+#    esac
+#    echo -n '\a'
+#  fi
+#}
 
 red::style_ps1() {
   local style="$1"
@@ -746,7 +754,7 @@ red::module() {
 }
 
 red::modules() {
-  RED_LAST_ERR="$?"
+  red_last_err="$?"
   local newline=0
   if [[ "$1" == '-n' ]]; then
     newline=1
@@ -758,7 +766,7 @@ red::modules() {
     shift
   fi
   local enabled_modules=0
-  for module in ${RED_MODULES}; do
+  for module in ${red_MODULES}; do
     #local module_out="$(red::module $module)"
     local module_out
     IFS='' read -r module_out < <(red::module $module)
@@ -774,8 +782,8 @@ red::modules() {
       red::style_ansi 'module_pad'
     fi
   fi
-  local err="$RED_LAST_ERR"
-  unset RED_LAST_ERR
+  local err="$red_last_err"
+  unset red_last_err
   return $err
 }
 
@@ -828,14 +836,14 @@ Options:
 
          --module NAME :  Enable module NAME
                -m NAME    Modules can be found in:
-                            $RED_ROOT/module
+                            $red_root/module
 
          --all-modules :  Enable all modules
                     -a
 
           --style NAME :  Enable style NAME
                -s NAME    Styles can be found in:
-                            $RED_ROOT/style
+                            $red_root/style
 
          --colors SPEC :  Override auto-detection for the number of ANSI colors
                -c SPEC      the current terminal supports.
@@ -884,11 +892,11 @@ EOF
 
 red::prompt() {
 
-  if [[ "$RED_PS1_ORIG" == '' ]]; then RED_PS1_ORIG="$PS1"; fi
-  red::debug "RED_PS1_ORIG: $RED_PS1_ORIG"
+  if [[ "$red_ps1_orig" == '' ]]; then red_ps1_orig="$PS1"; fi
+  red::debug "red_ps1_orig: $red_ps1_orig"
 
   for var in $(red::vars); do
-    [[ "$var" != 'RED_PS1_ORIG' ]] && unset $var
+    [[ "$var" != 'red_ps1_orig' ]] && unset $var
   done
 
   local prompt_markup='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
@@ -897,24 +905,24 @@ red::prompt() {
     shift
     case "$arg" in
       -p|--prompt)       prompt_markup="$1"; shift ;;
-      -f|--title-format) RED_TITLE_FORMAT="$1"; shift ;;
-      -t|--title-mode)   RED_TITLE_MODE="$1"; shift ;;
+      -f|--title-format) red_title_format="$1"; shift ;;
+      -t|--title-mode)   red_title_mode="$1"; shift ;;
       -h|--help)         red::help::prompt; return ;;
     esac
   done
 
-  RED_TITLE_MODE="${RED_TITLE_MODE:-prepend}"
-  red::debug "RED_TITLE_MODE: $RED_TITLE_MODE"
+  red_title_mode="${red_title_mode:-prepend}"
+  red::debug "red_title_mode: $red_title_mode"
 
-  RED_TITLE_FORMAT="${RED_TITLE_FORMAT:-\\u@\\h \\w}"
-  red::debug "RED_TITLE_FORMAT: $RED_TITLE_FORMAT"
+  red_title_format="${red_title_format:-\\u@\\h \\w}"
+  red::debug "red_title_format: $red_title_format"
 
   IFS='' read -r -d $'\0' title < <(red::title_ps1)
   red::debug "title: $title"
   red::debug "prompt_markup: $prompt_markup"
   IFS='' read -r -d $'\0' prompt < <(red::render_ps1 "$prompt_markup")
   red::debug "prompt: $prompt"
-  export PS1="$title$prompt"
+  export PS1='`red::pre_prompt`'"$prompt"'`red::post_prompt`'
   (( err+="$?" ))
   red::debug "PS1: $PS1"
   unset set_prompt

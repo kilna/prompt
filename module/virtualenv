@@ -1,17 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 red::module::virtualenv() {
-  local out="$(basename "$VIRTUAL_ENV" 2>/dev/null)"
-  [[ "$out" ]] || return
-  if __red_unicode; then
-    echo -n "🐍"
-  else
-    echo -n 'py env '
-  fi
-  echo -n "$out"
-}
 
-red::style::virtualenv() {
-  echo -n '{fg:yellow}'
+  IFS='' read -r venv < <(basename "$VITURAL_ENV" 2>/dev/null)
+
+  [[ "$venv" ]] || return
+
+  red::set module_virtualenv_content "$venv"
+  red::set module_virtualenv_color '#C90'
+  red::set module_virtualenv_prefix_unicode '🐍'
+  red::enable module_virtualenv_prefix_unicode_wide
+  red::set module_virtualenv_prefix_ascii 'venv'
+
 }
 

@@ -30,6 +30,8 @@
 
 ## To Do
 
-* Add ansi_remap into red
+* Refactor modules
+* Refactor module integration with styles
+  * Resolve colors and other params from environment
 * RedAlert sytem
 
