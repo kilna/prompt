@@ -2,14 +2,12 @@
 
 red::module::error() {
 
-  (( "$RED_LAST_EXIT" )) || return
+  (( "$red_last_exit" )) || return
 
-  red::set module_error_content "$RED_LAST_EXIT"
+  red::set module_error_content "$red_last_exit"
   red::set module_error_color '#F00'
-  red::set module_error_prefix_color '#FF0'
-  red::set module_error_prefix_unicode '⚠'
-  red::enable module_error_prefix_unicode_wide
-  red::set module_error_prefix_ascii "err"
+  red::set module_error_symbol_unicode '⚠ '
+  red::set module_error_symbol_ascii "E:"
 
 }
 

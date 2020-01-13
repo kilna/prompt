@@ -8,9 +8,8 @@ red::module::virtualenv() {
 
   red::set module_virtualenv_content "$venv"
   red::set module_virtualenv_color '#C90'
-  red::set module_virtualenv_prefix_unicode '🐍'
-  red::enable module_virtualenv_prefix_unicode_wide
-  red::set module_virtualenv_prefix_ascii 'venv'
+  red::set module_virtualenv_symbol_unicode '🐍'
+  red::set module_virtualenv_symbol_ascii 'venv:'
 
 }
 
