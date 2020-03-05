@@ -17,7 +17,7 @@ red::module::gitbranch() {
 
   [[ "$branch" == '' ]] && return
 
-  red::set module_gitbranch_content = "$branch"
+  red::set module_gitbranch_content "$branch"
   red::set module_gitbranch_color '#0FF'
   red::set module_gitbranch_symbol_powerline ''
   red::set module_gitbranch_symbol_unicode '⎇'

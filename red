@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [ ! "$BASH" ]; then
   echo "Script is only compatible with bash, current shell is $SHELL" >&2
@@ -23,6 +23,10 @@ trap "$(shopt -p extglob)" RETURN
 shopt -s extglob
 
 red() {
+
+  #for var in $(red::vars); do
+  #  [[ "$var" != 'red_ps1_orig' ]] && unset $var
+  #done
 
   eval "$( CFGFLAGS='-c|--config' CFGFILES=$HOME/.redrc? red::cfg "$@" )"
 
@@ -84,9 +88,10 @@ red() {
       echo "Error loading module $module: $error" >&2
       return 1
     fi
-    red::add loaded_modules $module
+    red::addlist loaded_modules $module
     red::debug "Module $module loaded successfully"
   done
+  red::debug Final loaded modules: "${red_loaded_modules[@]}"
 
   # Process multiple verbs delimited by --
   while (( $# > 0 )); do
@@ -280,9 +285,24 @@ red::disable() { export red_$1=0; }
 red::unset()   { unset red_$1; }
 red::get()     { local varname=red_$1; echo -n "${!varname}"; }
 
-red::add() {
-  varname="red_$1"
-  eval 'export '$varname'=("${'$varname'[@]}" "$2")'
+# Set a variable if it hasn't already been set
+red::ensure() {
+  local varname=red_$1
+  [[ "${!varname}" == '' ]] && red::set "$@"
+}
+
+red::setlist() {
+  local varname=red_$1
+  shift
+  export $varname
+  eval "$varname=( $(red::esc "$@") )"
+}
+
+red::addlist() {
+  local varname=red_$1
+  shift
+  export $varname
+  eval "$varname=( \"\${${varname}[@]}\" $(red::esc "$@") )"
 }
 
 red::check() {
@@ -295,8 +315,8 @@ red::check() {
 }
 
 red::reload() {
+  red::debug "Reloading $red_script"
   red::unload
-  red::debug "Running $red_script"
   if [[ -e $red_script ]]; then
     source $red_script "$@"
   else
@@ -375,7 +395,7 @@ export red_style_time='{fg:yellow}'
 export red_style_time12='{fg:yellow}'
 export red_style_date='{fg:yellow}'
 export red_style_ampm='{fg:yellow}'
-export red_style_module='{reverse}{space}{$prefix}{'
+export red_style_module='{reverse}{space}'
 export red_style_module_end='{space}{/reverse}'
 export red_style_module_pad='{space}'
 export red_style_module_symbol_pad='{space}'
@@ -550,9 +570,8 @@ red::color_as_e_ansi() {
 }
 
 red::style_ansi() {
-  local style="$1"
-  IFS='' read -r markup < <(red::get style_$1)
-  red::render_ansi "$markup"
+  local varname="red_style_$1"
+  red::render_ansi "${!varname}"
 }
 
 red::style_wrap_ansi() {
@@ -604,9 +623,8 @@ red::render_ansi() {
 }
 
 red::style_ps1() {
-  local style="$1"
-  IFS='' read -r markup < <(red::get style_$1)
-  red::render_ps1 "$markup"
+  local varname="red_style_$1"
+  red::render_ps1 "${!varname}"
 }
 
 red::style_wrap_ps1() {
@@ -622,6 +640,7 @@ red::render_ps1() {
     -p|--preparsed) shift ;; # Do nothing
     *) eval "$(red::parse_markup "$@")";; # Chunk input by {tag}
   esac
+  red::debug 'render_ps1:' "$@"
   while (( $# > 0 )); do
     arg="$1"
     shift
@@ -671,22 +690,30 @@ red::render_ps1() {
 }
 
 red::module() {
+  red::ensure module_error_last_exit "$?" # Cache last command's error...
+  red::debug ">module $1"
   module="$1"
-  red::debug "module: $module"
-  local varname="module_${module}_content"
+  red::module::$module
+  local varname="red_module_${module}_content"
   local content="${!varname}"
   [[ "$content" ]] || return
   red::debug "  content: $content"
   for varname in color symbol_powerline symbol_unicode symbol_ascii; do
-    local varnamefull="module_${module}_${varname}"
-    local $varname="${!varnamefull}"
+    local varnamefull="red_module_${module}_${varname}"
+    local value="${!varnamefull}"
+    eval "local $varname='${value//\'/\'\\\'\'}'"
   done
   red::style_ansi module
+  red::debug 'red::powerline: '$(red::powerline; if [[ "$?" == 0 ]]; then echo true; else echo false; fi )
+  red::debug "symbol_powerline='$symbol_powerline'"
+  red::debug 'red::unicode: '$(red::unicode; if [[ "$?" == 0 ]]; then echo true; else echo false; fi )
+  red::debug "symbol_unicode='$symbol_unicode'"
+  red::debug "symbol_ascii='$symbol_ascii'"
   if red::powerline && [[ "$symbol_powerline" ]]; then
     echo -n "$symbol_powerline"
     red::style_ansi module_symbol_pad
   elif red::unicode && [[ "$symbol_unicode" ]]; then
-    echo -n "$unicode_symbol"
+    echo -n "$symbol_unicode"
     red::style_ansi module_symbol_pad
   elif [[ "$symbol_ascii" ]]; then
     echo -n "$symbol_ascii"
@@ -694,9 +721,13 @@ red::module() {
   fi
   echo -n "$content"
   red::style_ansi module_end
+  exit $red_module_error_last_exit
 }
 
 red::modules() {
+  red::ensure module_error_last_exit "$?" # Cache last command's error...
+  red::debug ">modules"
+  #red::enable debug
   local newline=0
   if [[ "$1" == '-n' ]]; then
     newline=1
@@ -732,6 +763,7 @@ red::modules() {
       red::style_ansi 'module_pad'
     fi
   fi
+  exit $red_module_error_last_exit
 }
 
 red::ansi_color_depth() {
@@ -770,7 +802,13 @@ red::ansi_color_depth() {
 }
 
 red::help() {
-  echo "HELP!"
+  if [[ "$1" != '' ]] && typeset -F red::help::$1; then
+    local verb="$1"
+    shift
+    red::help::$verb "$@"
+  else
+    echo "HELP!"
+  fi
 }
 
 red::help::prompt() {
@@ -838,10 +876,8 @@ EOF
 }
 
 red::pre_prompt() {
-  red::set last_exit "$?" # Cache last command's error...
-  for module in "${red_loaded_modules[@]}"; do
-    red::module::$module
-  done
+  red::ensure module_error_last_exit "$?" # Cache last command's error...
+  red::debug ">pre_prompt"
 #  if [[ "$red_title" ]]; then
 #    case "$red_title_mode" in
 #      prepend)     echo -n "$red_title"' - ';;
@@ -850,16 +886,14 @@ red::pre_prompt() {
 #      interpolate) echo -n "${red_title_format//\\z/'`red::title`'}";;
 #    esac
 #  fi
+  return $red_module_error_last_exit
 }
 
-red::post_prompt() {
-  local last_err="$red_last_exit"
-  for var in $(red::vars); do
-    [[ "$var" == red_module_* ]] && continue
-    unset $var
-  done
-  return $last_exit
-}
+#red::post_prompt() {
+#  red::ensure module_error_last_exit "$?" # Cache last command's error...
+#  exit $
+#}
+
 
 #red::title_ps1() {
 #  if [[ "$red_title_mode" != 'disabled' ]]; then
@@ -878,10 +912,6 @@ red::prompt() {
 
   if [[ "$red_ps1_orig" == '' ]]; then red_ps1_orig="$PS1"; fi
   red::debug "red_ps1_orig: $red_ps1_orig"
-
-  for var in $(red::vars); do
-    [[ "$var" != 'red_ps1_orig' ]] && unset $var
-  done
 
   local prompt_markup='{modules:eol}{user}{reset}@{host} {dir}{eol}{prompt} {reset}'
   while (( $# > 0 )); do
@@ -905,11 +935,10 @@ red::prompt() {
   #red::debug "title: $title"
   red::debug "prompt_markup: $prompt_markup"
   IFS='' read -r -d $'\0' prompt < <(red::render_ps1 "$prompt_markup")
-  #red::debug "prompt: $prompt"
-  export PS1='`red::pre_prompt`'"$prompt"'`red::post_prompt`'
+  red::debug "prompt: $prompt"
+  export PS1="`red::pre_prompt`$prompt"
   (( err+="$?" ))
   red::debug "PS1: $PS1"
-  unset set_prompt
 
   return $err
 }
